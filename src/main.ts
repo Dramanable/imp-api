@@ -68,9 +68,10 @@ async function bootstrap() {
   // ── Rate limiting ────────────────────────────────────────────────────────
   // Protects the LLM endpoint from abuse: 20 requests per minute per IP.
   // The 429 response includes a Retry-After header so clients can back off.
+  // Disabled in development to avoid friction during local testing.
   const i18nService = app.get<I18nService>(I18nService);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await app.register(rateLimit as any, {
+  if (isProduction) await app.register(rateLimit as any, {
     max: 20,
     timeWindow: '1 minute',
     errorResponseBuilder: (

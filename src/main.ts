@@ -165,11 +165,21 @@ The \`tone\` field accepts any non-empty string (max 100 characters):
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document, {
+    // swaggerUrl sets options.swaggerUrl in the generated swagger-ui-init.js.
+    // Without this, the init.js falls back to window.location.origin as the
+    // spec URL, which returns the page HTML and causes the UI to render blank.
+    swaggerUrl: '/api/docs-json',
+    // Unregister any stale service workers (e.g. from a previous CRA / Vite
+    // app on localhost:3000) that may intercept the navigation and cause a
+    // blank page with the "preloadResponse cancelled" console warning.
+    customJsStr: `
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          regs.forEach(function(reg) { reg.unregister(); });
+        });
+      }
+    `,
     swaggerOptions: {
-      // Explicit JSON URL prevents Swagger UI from falling back to
-      // window.location.origin as the spec URL, which returns HTML and
-      // causes the UI to render empty.
-      url: '/api/docs-json',
       persistAuthorization: true,
       tagsSorter: 'alpha',
       operationsSorter: 'alpha',

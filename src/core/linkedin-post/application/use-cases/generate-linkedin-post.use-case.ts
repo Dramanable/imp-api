@@ -143,11 +143,16 @@ export class GenerateLinkedInPostUseCase {
     });
 
     // Stream tokens from LLM while buffering to detect the ---NOTE--- boundary.
-    // We keep a window of NOTE_SEPARATOR.length bytes un-yielded to avoid
-    // accidentally streaming part of the separator as post content.
+    // Post tokens are emitted as `chunk` events immediately (holding back
+    // NOTE_SEPARATOR.length bytes to avoid splitting the separator across yields).
+    // Once the separator is found, note tokens are emitted as cumulative `note`
+    // events so the frontend can render the note progressively instead of waiting
+    // for the full LLM response to finish.
     let accumulated = '';
-    let yieldedUpTo = 0;
+    let postYieldedTo = 0;    // position up to which post chunks have been emitted
     let sepFound = false;
+    let noteFrom = 0;         // position in accumulated where note content starts
+    let noteCumulativeLen = 0; // length of note text already emitted (for delta tracking)
 
     const request = new PostGenerationRequest(companyDescription, brief, tone, lang);
 
@@ -156,26 +161,41 @@ export class GenerateLinkedInPostUseCase {
         accumulated += token;
 
         if (!sepFound) {
-          const sepIdx = accumulated.indexOf(NOTE_SEPARATOR);
-          if (sepIdx !== -1) {
-            if (sepIdx > yieldedUpTo) {
-              yield { type: 'chunk', content: accumulated.slice(yieldedUpTo, sepIdx) };
+          const idx = accumulated.indexOf(NOTE_SEPARATOR);
+          if (idx !== -1) {
+            // Yield remaining post bytes before the separator
+            if (idx > postYieldedTo) {
+              yield { type: 'chunk', content: accumulated.slice(postYieldedTo, idx) };
             }
-            yieldedUpTo = accumulated.length;
             sepFound = true;
-          } else {
-            const safeUpTo = accumulated.length - NOTE_SEPARATOR.length;
-            if (safeUpTo > yieldedUpTo) {
-              yield { type: 'chunk', content: accumulated.slice(yieldedUpTo, safeUpTo) };
-              yieldedUpTo = safeUpTo;
+            noteFrom = idx + NOTE_SEPARATOR.length;
+            // Emit any note content already buffered in the same token batch
+            const initialNote = accumulated.slice(noteFrom).trim();
+            if (initialNote) {
+              noteCumulativeLen = initialNote.length;
+              yield { type: 'note', content: initialNote };
             }
+          } else {
+            // Safe to yield post bytes (hold back separator.length to avoid splitting)
+            const safeUpTo = accumulated.length - NOTE_SEPARATOR.length;
+            if (safeUpTo > postYieldedTo) {
+              yield { type: 'chunk', content: accumulated.slice(postYieldedTo, safeUpTo) };
+              postYieldedTo = safeUpTo;
+            }
+          }
+        } else {
+          // Progressive note streaming – emit cumulative note content as it arrives
+          const currentNote = accumulated.slice(noteFrom).trim();
+          if (currentNote.length > noteCumulativeLen) {
+            noteCumulativeLen = currentNote.length;
+            yield { type: 'note', content: currentNote };
           }
         }
       }
 
-      // Flush remaining post bytes if no separator was found
-      if (!sepFound && accumulated.length > yieldedUpTo) {
-        yield { type: 'chunk', content: accumulated.slice(yieldedUpTo) };
+      // Flush remaining post bytes if the separator was never found
+      if (!sepFound && accumulated.length > postYieldedTo) {
+        yield { type: 'chunk', content: accumulated.slice(postYieldedTo) };
       }
     } catch (error) {
       if (error instanceof LlmUnavailableException) throw error;
@@ -187,14 +207,21 @@ export class GenerateLinkedInPostUseCase {
       throw new LlmUnavailableException('linkedin-post.llm.unavailable', { correlationId });
     }
 
-    // Parse accumulated content and persist to cache
+    // Extract final values for caching
     const sepIdx = accumulated.indexOf(NOTE_SEPARATOR);
     const post = (sepIdx !== -1 ? accumulated.slice(0, sepIdx) : accumulated)
       .trim()
       .slice(0, MAX_POST_CHARS);
     const note = (sepIdx !== -1 ? accumulated.slice(sepIdx + NOTE_SEPARATOR.length) : '').trim();
 
-    await this.cacheService.set(cacheKey, new GeneratedPost(post, note));
+    // Cache fire-and-forget – a Redis failure must never block the `done` event
+    this.cacheService.set(cacheKey, new GeneratedPost(post, note)).catch((err) => {
+      this.logger.warn('Failed to cache streamed post (non-fatal)', {
+        action: 'GenerateLinkedInPostStream',
+        correlationId,
+        error: String(err),
+      });
+    });
 
     this.logger.info('LinkedIn post streamed successfully', {
       action: 'GenerateLinkedInPostStream',
@@ -202,7 +229,6 @@ export class GenerateLinkedInPostUseCase {
       correlationId,
     });
 
-    yield { type: 'note', content: note };
     yield { type: 'done', fromCache: false };
   }
 

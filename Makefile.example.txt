@@ -1,0 +1,425 @@
+# ═══════════════════════════════════════════════════
+#  A3S API — Makefile
+#  Production: VPS Direct (PM2 + MongoDB/Redis natifs)
+#  Développement: Docker Compose (services isolés)
+#  Domaine: https://server.a3s-securite.com
+# ═══════════════════════════════════════════════════
+
+# ── Variables ──────────────────────────────────────
+APP_NAME       = a3s-api
+COMPOSE_DEV    = docker compose --env-file .env.development
+COMPOSE_PROD   = docker compose -f docker-compose.prod.yml
+NODE_VERSION   = 24.14.1
+
+# ── VPS ─────────────────────────────────────────────
+VPS_HOST       = 84.247.160.53
+VPS_USER       = amadou
+VPS_DIR        = /home/amadou/a3s/api
+DOMAIN         = server.a3s-securite.com
+
+RED    = \033[0;31m
+GREEN  = \033[0;32m
+YELLOW = \033[1;33m
+BLUE   = \033[0;34m
+NC     = \033[0m
+
+.PHONY: help
+.PHONY: prod-build prod-up prod-down prod-restart prod-rebuild prod-logs prod-logs-short prod-health prod-shell
+.PHONY: dev-up dev-down dev-restart dev-rebuild dev-logs dev-shell dev-install
+.PHONY: db-shell db-shell-dev db-backup db-restore
+.PHONY: status logs clean info deploy
+.PHONY: ship ship-run
+.PHONY: vps-setup vps-nginx vps-ssl vps-ssl-renew vps-deploy vps-redeploy vps-seed vps-app-start vps-app-restart vps-app-reload
+.PHONY: vps-mongo-reinstall vps-mongo-fix vps-mongo-upgrade vps-status vps-logs vps-health vps-tail
+.DEFAULT_GOAL := help
+
+help: ## Afficher cette aide
+	@echo "$(BLUE)══════════════════════════════════════════$(NC)"
+	@echo "$(BLUE)          A3S API — Commandes             $(NC)"
+	@echo "$(BLUE)══════════════════════════════════════════$(NC)"
+	@echo ""
+	@echo "$(YELLOW)DÉPLOIEMENT VPS (PM2 — no Docker):$(NC)"
+	@grep -E '^vps-[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-28s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(YELLOW)PRODUCTION (Docker local):$(NC)"
+	@grep -E '^prod-[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-28s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(YELLOW)DÉVELOPPEMENT (Docker):$(NC)"
+	@grep -E '^dev-[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-28s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(YELLOW)BASE DE DONNÉES:$(NC)"
+	@grep -E '^db-[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-28s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(YELLOW)ARCHIVAGE VPS (zip+SSH):$(NC)"
+	@grep -E '^ship[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-28s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "$(YELLOW)UTILITAIRES:$(NC)"
+	@grep -E '^(status|logs|clean|info|deploy):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(GREEN)%-28s$(NC) %s\n", $$1, $$2}'
+
+# ═══════════════════════════════════════════════════
+#  PRODUCTION — VPS
+# ═══════════════════════════════════════════════════
+
+prod-build: ## Construire l'image de production
+	@echo "$(YELLOW)🔨 Build de l'image production...$(NC)"
+	$(COMPOSE_PROD) build
+	@echo "$(GREEN)✅ Image production construite$(NC)"
+
+prod-up: ## Démarrer l'API en production
+	@echo "$(YELLOW)🚀 Démarrage de l'API production...$(NC)"
+	$(COMPOSE_PROD) up -d
+	@echo "$(GREEN)✅ API démarrée sur http://localhost:5000$(NC)"
+	@sleep 5
+	@make status
+
+prod-down: ## Arrêter l'API de production
+	@echo "$(YELLOW)🛑 Arrêt de l'API production...$(NC)"
+	$(COMPOSE_PROD) down
+	@echo "$(GREEN)✅ API arrêtée$(NC)"
+
+prod-restart: ## Redémarrer l'API de production
+	@echo "$(YELLOW)🔄 Redémarrage...$(NC)"
+	$(COMPOSE_PROD) down
+	$(COMPOSE_PROD) up -d
+	@echo "$(GREEN)✅ API redémarrée$(NC)"
+	@sleep 5
+	@make status
+
+prod-rebuild: ## Rebuild complet et redémarrage
+	@echo "$(YELLOW)🔄 Rebuild complet production...$(NC)"
+	$(COMPOSE_PROD) down
+	$(COMPOSE_PROD) build --no-cache
+	$(COMPOSE_PROD) up -d
+	@echo "$(GREEN)✅ API reconstruite et redémarrée$(NC)"
+	@sleep 8
+	@make prod-health
+
+prod-logs: ## Suivre les logs de production en temps réel
+	$(COMPOSE_PROD) logs -f
+
+prod-logs-short: ## Afficher les 50 dernières lignes de logs
+	docker logs $(APP_NAME) --tail 50
+
+prod-health: ## Vérifier la santé de l'API de production
+	@echo "$(YELLOW)🏥 Vérification de santé...$(NC)"
+	@docker logs $(APP_NAME) --tail 5 2>&1
+	@echo ""
+	@curl -sf http://localhost:5000/api/health > /dev/null 2>&1 \
+		&& echo "$(GREEN)✅ API accessible sur http://localhost:5000$(NC)" \
+		|| echo "$(YELLOW)⚠️  API en cours de démarrage ou protégée par auth$(NC)"
+
+prod-shell: ## Ouvrir un shell dans le container production
+	docker exec -it $(APP_NAME) sh
+
+# ═══════════════════════════════════════════════════
+#  DÉVELOPPEMENT — Docker Compose complet
+# ═══════════════════════════════════════════════════
+
+dev-up: ## Démarrer l'environnement de dev
+	@echo "$(YELLOW)🚀 Démarrage de l'environnement de dev...$(NC)"
+	$(COMPOSE_DEV) up -d
+	@echo "$(GREEN)✅ Environnement de dev démarré$(NC)"
+	@echo "  🌐 API:     http://localhost:3001"
+	@echo "  🗄️  MongoDB: localhost:27020"
+	@echo "  🔴 Redis:   localhost:6382"
+
+dev-down: ## Arrêter l'environnement de dev
+	$(COMPOSE_DEV) down
+
+dev-restart: ## Redémarrer l'environnement de dev
+	$(COMPOSE_DEV) down
+	$(COMPOSE_DEV) up -d
+
+dev-rebuild: ## Rebuild complet de l'environnement de dev
+	$(COMPOSE_DEV) down
+	$(COMPOSE_DEV) build --no-cache
+	$(COMPOSE_DEV) up -d
+
+dev-logs: ## Suivre les logs de l'API en dev
+	$(COMPOSE_DEV) logs -f api
+
+dev-shell: ## Shell dans le container API dev
+	docker exec -it api sh
+
+dev-install: ## Installer les dépendances pnpm dans le container dev
+	docker exec api pnpm install
+
+# ═══════════════════════════════════════════════════
+#  BASE DE DONNÉES
+# ═══════════════════════════════════════════════════
+
+db-shell: ## Shell MongoDB (production — localhost)
+	mongosh 'mongodb://admin:adminpassword@localhost:27017/securite?authSource=admin'
+
+db-shell-dev: ## Shell MongoDB (dev — container Docker)
+	docker exec -it mongodb mongosh 'mongodb://admin:adminpassword@localhost:27017/securite?authSource=admin'
+
+db-backup: ## Sauvegarder la base de données
+	@echo "$(YELLOW)💾 Sauvegarde de la base...$(NC)"
+	@mkdir -p backups
+	mongodump --uri='mongodb://admin:adminpassword@localhost:27017/securite?authSource=admin' --out=backups/backup-$$(date +%Y%m%d-%H%M%S)
+	@echo "$(GREEN)✅ Sauvegarde dans backups/$(NC)"
+
+db-restore: ## Restaurer une sauvegarde (usage: make db-restore BACKUP=backups/backup-xxx)
+	mongorestore --uri='mongodb://admin:adminpassword@localhost:27017/?authSource=admin' --drop $(BACKUP)
+
+# ═══════════════════════════════════════════════════
+#  UTILITAIRES
+# ═══════════════════════════════════════════════════
+
+status: ## Statut de tous les services
+	@echo "$(BLUE)──────────────────────────────────$(NC)"
+	@echo "$(BLUE) Statut des services$(NC)"
+	@echo "$(BLUE)──────────────────────────────────$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Container Docker:$(NC)"
+	@docker ps --filter "name=$(APP_NAME)" --filter "name=api" --filter "name=mongodb" --filter "name=redis" \
+		--format "  {{.Names}}\t{{.Status}}\t{{.Ports}}" 2>/dev/null || echo "  Aucun container"
+	@echo ""
+	@echo "$(YELLOW)Services système:$(NC)"
+	@(systemctl is-active mongod 2>/dev/null | grep -q active && echo "  MongoDB: $(GREEN)actif$(NC)") || echo "  MongoDB: $(RED)inactif (système)$(NC)"
+	@(systemctl is-active redis-server 2>/dev/null | grep -q active && echo "  Redis:   $(GREEN)actif$(NC)") || echo "  Redis:   $(RED)inactif (système)$(NC)"
+
+logs: ## Alias — logs de production
+	@make prod-logs
+
+clean: ## Nettoyer images Docker inutilisées
+	@echo "$(YELLOW)🧹 Nettoyage...$(NC)"
+	docker system prune -f
+	docker image prune -f
+	@echo "$(GREEN)✅ Nettoyage terminé$(NC)"
+
+info: ## Informations sur l'environnement
+	@echo "$(BLUE)══════════════════════════════════════════$(NC)"
+	@echo "$(BLUE)          A3S API — Infos                 $(NC)"
+	@echo "$(BLUE)══════════════════════════════════════════$(NC)"
+	@echo ""
+	@echo "$(YELLOW)Production (VPS):$(NC)"
+	@echo "  🌐 API:     http://localhost:5000"
+	@echo "  🗄️  MongoDB: localhost:27017"
+	@echo "  🔴 Redis:   localhost:6379"
+	@echo "  📧 Admin:   amadou.85@hotmail.fr"
+	@echo ""
+	@echo "$(YELLOW)Développement (Docker):$(NC)"
+	@echo "  🌐 API:     http://localhost:3001"
+	@echo "  🗄️  MongoDB: localhost:27020"
+	@echo "  🔴 Redis:   localhost:6382"
+	@echo ""
+	@echo "$(YELLOW)Déploiement:$(NC)"
+	@echo "  make deploy       — git pull + rebuild + restart"
+	@echo "  make prod-rebuild — rebuild sans git pull"
+	@echo "  make prod-up      — démarrer simplement"
+
+# ═══════════════════════════════════════════════════
+#  DÉPLOIEMENT VPS — PM2 sans Docker
+#  Workflow: make ship → vps-setup → vps-nginx → vps-ssl → vps-deploy
+# ═══════════════════════════════════════════════════
+
+vps-setup: ## Installer MongoDB8+Redis+Nginx+Certbot+PM2+Node24 sur le VPS (première fois)
+	@echo "$(YELLOW)🔧 Installation complète de l'environnement VPS...$(NC)"
+	@scp scripts/vps-setup.sh $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)/scripts/vps-setup.sh
+	@ssh -t $(VPS_USER)@$(VPS_HOST) "sudo bash $(VPS_DIR)/scripts/vps-setup.sh"
+	@echo "$(GREEN)✅ VPS configuré$(NC)"
+
+vps-nginx: ## Déployer la config Nginx + GeoIP2 sur le VPS
+	@echo "$(YELLOW)🌐 Installation de la configuration Nginx...$(NC)"
+	@ssh $(VPS_USER)@$(VPS_HOST) "mkdir -p $(VPS_DIR)/nginx"
+	@scp nginx/nginx-main.conf                  $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)/nginx/nginx-main.conf
+	@scp nginx/server.a3s-securite.com.conf     $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)/nginx/server.a3s-securite.com.conf
+	@scp scripts/vps-nginx-install.sh           $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)/scripts/vps-nginx-install.sh
+	@ssh -t $(VPS_USER)@$(VPS_HOST) "sudo bash $(VPS_DIR)/scripts/vps-nginx-install.sh"
+	@echo "$(GREEN)✅ Nginx configuré$(NC)"
+
+vps-ssl: ## Obtenir le certificat SSL Let's Encrypt pour $(DOMAIN)
+	@echo "$(YELLOW)🔒 Obtention du certificat SSL pour $(DOMAIN)...$(NC)"
+	@ssh -t $(VPS_USER)@$(VPS_HOST) "\
+		sudo certbot --nginx -d $(DOMAIN) \
+		  --non-interactive --agree-tos \
+		  --email contact@a3s-securite.com \
+		  --redirect \
+		  --keep-until-expiring \
+	"
+	@ssh -t $(VPS_USER)@$(VPS_HOST) "sudo bash $(VPS_DIR)/scripts/vps-nginx-install.sh"
+	@echo "$(GREEN)✅ SSL activé sur https://$(DOMAIN)$(NC)"
+
+vps-ssl-renew: ## Tester le renouvellement automatique SSL (dry-run)
+	@ssh $(VPS_USER)@$(VPS_HOST) "sudo certbot renew --dry-run"
+
+vps-deploy: ship ## Envoyer le code ET redéployer l'app (ship + deploy)
+	@echo "$(YELLOW)🚀 Déploiement de l'application sur le VPS...$(NC)"
+	@scp scripts/vps-deploy.sh $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)/scripts/vps-deploy.sh
+	@ssh -t $(VPS_USER)@$(VPS_HOST) "cd $(VPS_DIR) && bash scripts/vps-deploy.sh"
+	@echo "$(GREEN)✅ Application déployée sur https://$(DOMAIN)$(NC)"
+
+vps-redeploy: ## Re-déployer sans re-envoyer les fichiers (build + PM2 reload)
+	@echo "$(YELLOW)🔄 Redéploiement sur le VPS...$(NC)"
+	@ssh -t $(VPS_USER)@$(VPS_HOST) "cd $(VPS_DIR) && bash scripts/vps-deploy.sh"
+	@echo "$(GREEN)✅ Redéploiement terminé$(NC)"
+
+vps-seed: ## Exécuter les seeds de production (security, zones, email-templates)
+	@echo "$(YELLOW)🌱 Exécution des seeds de production...$(NC)"
+	@ssh $(VPS_USER)@$(VPS_HOST) "cd $(VPS_DIR) && bash scripts/vps-seed.sh all"
+	@echo "$(GREEN)✅ Seeds terminés$(NC)"
+
+vps-seed-%: ## Exécuter un seed spécifique (ex: make vps-seed-zones)
+	@ssh $(VPS_USER)@$(VPS_HOST) "cd $(VPS_DIR) && bash scripts/vps-seed.sh $*"
+
+vps-app-start: ## Démarrer l'app PM2 sur le VPS (premier démarrage)
+	@ssh -t $(VPS_USER)@$(VPS_HOST) "cd $(VPS_DIR) && pm2 start ecosystem.vps.json --env production && pm2 save"
+
+vps-app-restart: ## Redémarrer l'app PM2 sur le VPS (cold restart)
+	@ssh $(VPS_USER)@$(VPS_HOST) "pm2 restart $(APP_NAME) --update-env && pm2 save"
+
+vps-app-reload: ## Recharger l'app PM2 sur le VPS (zero-downtime)
+	@ssh $(VPS_USER)@$(VPS_HOST) "pm2 reload $(APP_NAME) --update-env && pm2 save"
+
+vps-nginx-reload: ## Recharger la config Nginx sur le VPS
+	@ssh $(VPS_USER)@$(VPS_HOST) "sudo nginx -t && sudo systemctl reload nginx"
+
+vps-health: ## Vérifier la santé de l'API sur le VPS
+	@echo "$(YELLOW)🏥 Health check VPS...$(NC)"
+	@ssh $(VPS_USER)@$(VPS_HOST) "curl -sf https://$(DOMAIN)/api/health && echo OK || echo FAIL"
+	@ssh $(VPS_USER)@$(VPS_HOST) "pm2 list"
+
+vps-tail: ## Suivre les logs PM2 en temps réel sur le VPS
+	@ssh -t $(VPS_USER)@$(VPS_HOST) "pm2 logs $(APP_NAME) --lines 30"
+
+# ═══════════════════════════════════════════════════
+#  SYNC VPS — rsync (sans zip, sans Docker)
+# ═══════════════════════════════════════════════════
+
+ship: ## Synchroniser le code source vers le VPS via rsync
+	@echo "$(YELLOW)🔄 Synchronisation rsync → $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)...$(NC)"
+	@ssh $(VPS_USER)@$(VPS_HOST) "mkdir -p $(VPS_DIR)/scripts $(VPS_DIR)/nginx $(VPS_DIR)/src"
+	@rsync -az --delete \
+		--exclude='.git/' \
+		--exclude='node_modules/' \
+		--exclude='dist/' \
+		--exclude='logs/' \
+		--exclude='uploads/' \
+		--exclude='backups/' \
+		--exclude='*.log' \
+		--exclude='.env.development' \
+		--exclude='.env.test' \
+		--exclude='package-lock.json' \
+		--filter='protect .env.production' \
+		$(PWD)/ $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)/
+	@echo "$(GREEN)✅ Code synchronisé → $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)$(NC)"
+
+ship-run: ## rsync + build + PM2 reload sur le VPS
+	@make ship
+	@ssh -t $(VPS_USER)@$(VPS_HOST) "cd $(VPS_DIR) && bash scripts/vps-deploy.sh"
+	@echo "$(GREEN)✅ Déployé sur https://$(DOMAIN)$(NC)"
+
+vps-mongo-reinstall: ## Désinstaller complètement MongoDB et réinstaller la version 8.0
+	@echo "$(YELLOW)🗑️  Désinstallation complète de MongoDB sur le VPS...$(NC)"
+	@ssh -t $(VPS_USER)@$(VPS_HOST) " \
+		set -e && \
+		echo '=== Arrêt de MongoDB ===' && \
+		sudo systemctl stop mongod 2>/dev/null || true && \
+		sudo systemctl disable mongod 2>/dev/null || true && \
+		echo '=== Purge des paquets ===' && \
+		sudo apt-get purge -y mongodb* 2>/dev/null || true && \
+		sudo apt-get autoremove -y && \
+		echo '=== Suppression des fichiers résiduels ===' && \
+		sudo rm -rf /var/lib/mongodb && \
+		sudo rm -rf /var/log/mongodb && \
+		sudo rm -f /etc/mongod.conf && \
+		sudo rm -f /etc/apt/sources.list.d/mongodb*.list && \
+		sudo rm -f /usr/share/keyrings/mongodb-server-*.gpg && \
+		sudo apt-get update -qq && \
+		echo '=== Installation de MongoDB 8.0 ===' && \
+		sudo apt-get install -y gnupg curl && \
+		curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | sudo gpg --batch --yes -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor && \
+		echo 'deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/8.0 multiverse' | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list && \
+		sudo apt-get update && \
+		sudo apt-get install -y mongodb-org && \
+		echo '=== Création de /etc/mongod.conf ===' && \
+		printf 'storage:\n  dbPath: /var/lib/mongodb\nsystemLog:\n  destination: file\n  logAppend: true\n  path: /var/log/mongodb/mongod.log\nnet:\n  port: 27017\n  bindIp: 127.0.0.1\nprocessManagement:\n  timeZoneInfo: /usr/share/zoneinfo\n' | sudo tee /etc/mongod.conf && \
+		echo '=== Création des répertoires ===' && \
+		sudo mkdir -p /var/lib/mongodb /var/log/mongodb && \
+		sudo chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb && \
+		sudo chmod 750 /var/lib/mongodb && \
+		echo '=== Démarrage de MongoDB 8.0 ===' && \
+		sudo systemctl daemon-reload && \
+		sudo systemctl enable mongod && \
+		sudo systemctl start mongod && \
+		sleep 3 && \
+		sudo systemctl status mongod --no-pager | head -15 && \
+		echo '=== Test de connexion ===' && \
+		mongosh --eval 'db.runCommand({ping:1})' \
+	"
+	@echo "$(GREEN)✅ MongoDB 8.0 installé et opérationnel$(NC)"
+
+vps-mongo-fix: ## Recréer /etc/mongod.conf manquant et redémarrer MongoDB
+	@echo "$(YELLOW)🔧 Correction de MongoDB sur le VPS...$(NC)"
+	@ssh -t $(VPS_USER)@$(VPS_HOST) " \
+		set -e && \
+		echo '--- Création de /etc/mongod.conf ---' && \
+		printf 'storage:\n  dbPath: /var/lib/mongodb\nsystemLog:\n  destination: file\n  logAppend: true\n  path: /var/log/mongodb/mongod.log\nnet:\n  port: 27017\n  bindIp: 127.0.0.1\nprocessManagement:\n  timeZoneInfo: /usr/share/zoneinfo\n' | sudo tee /etc/mongod.conf && \
+		echo '--- Création des répertoires requis ---' && \
+		sudo mkdir -p /var/lib/mongodb /var/log/mongodb && \
+		(sudo chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb 2>/dev/null || true) && \
+		echo '--- Démarrage de MongoDB ---' && \
+		sudo systemctl daemon-reload && \
+		sudo systemctl enable mongod && \
+		sudo systemctl restart mongod && \
+		sleep 3 && \
+		sudo systemctl status mongod --no-pager | head -20 \
+	"
+	@echo "$(GREEN)✅ MongoDB corrigé et démarré$(NC)"
+
+vps-mongo-upgrade: ## Mettre à jour MongoDB vers 7.0 sur le VPS (requis : Mongoose 8 nécessite MongoDB 4.2+)	@echo "$(YELLOW)⬆️  Mise à jour MongoDB → 7.0 sur le VPS...$(NC)"
+	@ssh -t $(VPS_USER)@$(VPS_HOST) " \
+		set -e && \
+		echo '--- Arrêt de MongoDB ---' && \
+		sudo systemctl stop mongod || true && \
+		echo '--- Suppression de l ancienne version ---' && \
+		sudo apt-get remove -y mongodb mongodb-clients mongodb-server mongodb-org* 2>/dev/null || true && \
+		sudo apt-get purge -y mongodb* 2>/dev/null || true && \
+		sudo rm -f /etc/apt/sources.list.d/mongodb*.list && \
+		echo '--- Ajout du dépôt MongoDB 7.0 ---' && \
+		sudo apt-get install -y gnupg curl && \
+		curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --batch --yes -o /usr/share/keyrings/mongodb-server-7.0.gpg --dearmor && \
+		. /etc/os-release && \
+		UBUNTU_CODENAME=\$$([ \"\$$VERSION_CODENAME\" = \"jammy\" ] && echo jammy || echo focal) && \
+		echo \"deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu \$$UBUNTU_CODENAME/mongodb-org/7.0 multiverse\" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list && \
+		sudo apt-get update && \
+		echo '--- Installation de MongoDB 7.0 ---' && \
+		sudo apt-get install -y mongodb-org && \
+		sudo systemctl daemon-reload && \
+		sudo systemctl enable mongod && \
+		sudo systemctl start mongod && \
+		sleep 2 && \
+		echo '--- Version installée ---' && \
+		mongod --version \
+	"
+	@echo "$(GREEN)✅ MongoDB 7.0 installé et démarré sur le VPS$(NC)"
+
+vps-status: ## Vérifier le statut de tous les services sur le VPS
+	@echo "$(YELLOW)🔍 Statut des services sur le VPS...$(NC)"
+	@ssh $(VPS_USER)@$(VPS_HOST) " \
+		echo '--- PM2 ---' && \
+		pm2 list 2>/dev/null || echo '  PM2 non démarré' ; \
+		echo '--- Node.js ---' && \
+		node -v 2>/dev/null || echo '  Node.js non installé' ; \
+		echo '--- MongoDB ---' && \
+		(systemctl is-active mongod 2>/dev/null | grep -q active && echo '  MongoDB: actif' && mongod --version 2>&1 | head -1) || echo '  MongoDB: inactif' ; \
+		echo '--- Redis ---' && \
+		(systemctl is-active redis-server 2>/dev/null | grep -q active && echo '  Redis: actif' && redis-server --version) || echo '  Redis: inactif' ; \
+		echo '--- Nginx ---' && \
+		(systemctl is-active nginx 2>/dev/null | grep -q active && echo '  Nginx: actif') || echo '  Nginx: inactif' \
+	"
+
+vps-logs: ## Voir les logs PM2 sur le VPS (50 dernières lignes)
+
+	@ssh $(VPS_USER)@$(VPS_HOST) "pm2 logs $(APP_NAME) --lines 50 --nostream 2>&1"
+
+deploy: ## Workflow complet: git commit+push → ship → build → PM2 reload sur le VPS
+	@echo "$(YELLOW)🚀 Déploiement complet...$(NC)"
+	git add -A
+	git diff --cached --quiet || git commit -m "deploy: $(shell date +'%Y-%m-%d %H:%M')"
+	git push origin master
+	@make vps-deploy
+	@echo ""
+	@echo "$(GREEN)✅ Déploiement terminé → https://$(DOMAIN)$(NC)"

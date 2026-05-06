@@ -15,6 +15,9 @@ APP_DIR="/home/amadou/impalia/api"
 APP_NAME="impalia-api"
 LOG_DIR="/home/amadou/impalia/logs"
 
+# ── Ensure pnpm and pm2 are in PATH (installed via npm/pnpm in ~/.local/bin) ─
+export PATH="$HOME/.local/bin:$HOME/.local/share/pnpm:$PATH"
+
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'

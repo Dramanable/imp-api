@@ -23,7 +23,7 @@ step() { echo -e "\n${YELLOW}▶ $*${NC}"; }
 ok()   { echo -e "${GREEN}✅ $*${NC}"; }
 
 # ── 1. Choose config based on cert availability ───────────────────────────────
-if [ -f "$CERT_FILE" ]; then
+if sudo test -f "$CERT_FILE"; then
   step "TLS cert found — installing full HTTPS config..."
   sudo cp "$APP_DIR/nginx/$DOMAIN.conf" "$NGINX_AVAILABLE/$DOMAIN"
 else
@@ -52,7 +52,7 @@ sudo nginx -t
 step "Reloading Nginx..."
 sudo systemctl reload nginx 2>/dev/null || sudo systemctl start nginx
 
-if [ -f "$CERT_FILE" ]; then
+if sudo test -f "$CERT_FILE"; then
   ok "Nginx reloaded — https://$DOMAIN active"
 else
   ok "Nginx reloaded — http://$DOMAIN active (HTTP only — run 'make vps-ssl' for HTTPS)"

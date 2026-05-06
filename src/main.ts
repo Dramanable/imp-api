@@ -9,6 +9,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import compression from '@fastify/compress';
 import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -47,6 +48,24 @@ async function bootstrap() {
     global: true,
     threshold: 1024,
     encodings: ['br', 'gzip', 'deflate'],
+  });
+
+  // ── Rate limiting ────────────────────────────────────────────────────────
+  // Protects the LLM endpoint from abuse: 20 requests per minute per IP.
+  // The 429 response includes a Retry-After header so clients can back off.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await app.register(rateLimit as any, {
+    max: 20,
+    timeWindow: '1 minute',
+    errorResponseBuilder: (
+      _request: unknown,
+      context: { max: number; ttl: number },
+    ) => ({
+      statusCode: 429,
+      error: 'Too Many Requests',
+      message: `Rate limit exceeded: ${context.max} requests per minute allowed.`,
+      retryAfter: Math.ceil(context.ttl / 1000),
+    }),
   });
 
   // ── Routing ─────────────────────────────────────────────────────────────

@@ -106,15 +106,16 @@ vps-setup: ## Install Node 24, pnpm, Redis, Nginx, PM2, Certbot on the VPS (run 
 	@echo "  scp scripts/vps-setup.sh $(VPS_USER)@$(VPS_HOST):~/vps-setup.sh"
 	@echo "  ssh -t $(VPS_USER)@$(VPS_HOST) 'bash ~/vps-setup.sh && rm ~/vps-setup.sh'"
 
-vps-nginx: ## Deploy Nginx config for $(DOMAIN) and reload Nginx
+vps-nginx: ## Deploy Nginx configs (full + pre-SSL) to the VPS and reload
 	@echo "$(YELLOW)🌐 Installing Nginx config for $(DOMAIN)...$(NC)"
 	@ssh $(VPS_USER)@$(VPS_HOST) "mkdir -p $(VPS_DIR)/nginx $(VPS_DIR)/scripts"
-	@scp nginx/$(DOMAIN).conf          $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)/nginx/$(DOMAIN).conf
-	@scp scripts/vps-nginx-install.sh  $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)/scripts/vps-nginx-install.sh
+	@scp nginx/$(DOMAIN).conf              $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)/nginx/$(DOMAIN).conf
+	@scp nginx/$(DOMAIN).pre-ssl.conf      $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)/nginx/$(DOMAIN).pre-ssl.conf
+	@scp scripts/vps-nginx-install.sh      $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)/scripts/vps-nginx-install.sh
 	@ssh -t $(VPS_USER)@$(VPS_HOST) "bash $(VPS_DIR)/scripts/vps-nginx-install.sh"
-	@echo "$(GREEN)✅ Nginx configured for http://$(DOMAIN)$(NC)"
+	@echo "$(GREEN)✅ Nginx configured for $(DOMAIN)$(NC)"
 
-vps-ssl: ## Obtain Let's Encrypt SSL certificate for $(DOMAIN)
+vps-ssl: ## Obtain/renew Let's Encrypt TLS cert for $(DOMAIN) via Certbot
 	@echo "$(YELLOW)🔒 Obtaining SSL certificate for $(DOMAIN)...$(NC)"
 	@ssh -t $(VPS_USER)@$(VPS_HOST) "\
 		sudo certbot --nginx -d $(DOMAIN) \
@@ -123,8 +124,9 @@ vps-ssl: ## Obtain Let's Encrypt SSL certificate for $(DOMAIN)
 		  --redirect \
 		  --keep-until-expiring \
 	"
+	@echo "$(YELLOW)🔁 Reinstalling full nginx config after Certbot...$(NC)"
 	@ssh -t $(VPS_USER)@$(VPS_HOST) "bash $(VPS_DIR)/scripts/vps-nginx-install.sh"
-	@echo "$(GREEN)✅ SSL enabled — https://$(DOMAIN)$(NC)"
+	@echo "$(GREEN)✅ TLS enabled — https://$(DOMAIN)$(NC)"
 
 vps-ssl-renew: ## Dry-run SSL certificate renewal
 	@ssh $(VPS_USER)@$(VPS_HOST) "sudo certbot renew --dry-run"
@@ -149,10 +151,25 @@ ship: ## Sync source code to the VPS via rsync (excludes node_modules, dist, .en
 		$(PWD)/ $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)/
 	@echo "$(GREEN)✅ Code synced to $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)$(NC)"
 
-vps-deploy: ship ## Sync code + install deps + build + PM2 reload (full deploy)
+vps-deploy: ship ## Sync code + install deps + build + PM2 reload (subsequent deploys)
 	@echo "$(YELLOW)🚀 Deploying to VPS...$(NC)"
 	@ssh -t $(VPS_USER)@$(VPS_HOST) "bash $(VPS_DIR)/scripts/vps-deploy.sh"
 	@echo "$(GREEN)✅ Deployed → https://$(DOMAIN)$(NC)"
+
+vps-first-deploy: ## Full first-time deploy: ship → nginx → TLS cert → build → PM2 start
+	@echo "$(YELLOW)🚀 First-time production deployment to $(VPS_HOST)...$(NC)"
+	@echo "$(YELLOW)   Step 1/4: Syncing source code...$(NC)"
+	@$(MAKE) ship
+	@echo "$(YELLOW)   Step 2/4: Installing Nginx (HTTP-only until cert is ready)...$(NC)"
+	@$(MAKE) vps-nginx
+	@echo "$(YELLOW)   Step 3/4: Provisioning TLS certificate via Certbot...$(NC)"
+	@$(MAKE) vps-ssl
+	@echo "$(YELLOW)   Step 4/4: Building and starting PM2...$(NC)"
+	@ssh -t $(VPS_USER)@$(VPS_HOST) "bash $(VPS_DIR)/scripts/vps-deploy.sh"
+	@echo ""
+	@echo "$(GREEN)═══════════════════════════════════════════════════════$(NC)"
+	@echo "$(GREEN)  ✅ Production live at https://$(DOMAIN)/api/v1       $(NC)"
+	@echo "$(GREEN)═══════════════════════════════════════════════════════$(NC)"
 
 vps-redeploy: ## Build + PM2 reload on the VPS without re-syncing code
 	@echo "$(YELLOW)🔄 Redeploying (no rsync)...$(NC)"

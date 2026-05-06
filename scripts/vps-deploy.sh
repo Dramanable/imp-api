@@ -26,7 +26,20 @@ err()  { echo -e "${RED}❌ $*${NC}"; exit 1; }
 
 cd "$APP_DIR" || err "Directory $APP_DIR not found. Run make vps-setup first."
 
-# ── 1. Dependencies ───────────────────────────────────────────────────────────
+# ── 0. Pre-flight: verify OPENAI_API_KEY is available ────────────────────────
+step "Pre-flight checks..."
+# The key may come from .env or from the calling environment.
+if [ -z "${OPENAI_API_KEY:-}" ]; then
+  if [ -f "$APP_DIR/.env" ] && grep -q '^OPENAI_API_KEY=' "$APP_DIR/.env"; then
+    export OPENAI_API_KEY
+    OPENAI_API_KEY=$(grep '^OPENAI_API_KEY=' "$APP_DIR/.env" | cut -d= -f2-)
+    ok "OPENAI_API_KEY loaded from .env"
+  else
+    err "OPENAI_API_KEY is not set and not found in $APP_DIR/.env.\n   Create $APP_DIR/.env with OPENAI_API_KEY=sk-... before deploying."
+  fi
+else
+  ok "OPENAI_API_KEY present in environment"
+fi
 step "Installing dependencies..."
 pnpm install --frozen-lockfile --prod=false
 ok "Dependencies installed"

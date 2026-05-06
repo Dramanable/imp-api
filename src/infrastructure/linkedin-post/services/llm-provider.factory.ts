@@ -36,8 +36,8 @@ export function createLlmProvider(
         config.getOrThrow<string>('OPENAI_API_KEY'),
         config.get<string>('OPENAI_MODEL', 'gpt-4o-mini'),
         i18nService,
-        config.get<number>('LLM_TEMPERATURE', 0.7),
-        config.get<number>('LLM_MAX_TOKENS', 1_024),
+        parseFloat(config.get<string>('LLM_TEMPERATURE', '0.7')),
+        parseInt(config.get<string>('LLM_MAX_TOKENS', '1024'), 10),
       );
 
     default: {

@@ -76,7 +76,7 @@ export class OpenAiPostGenerationService implements IPostGenerationService {
         max_tokens: this.maxTokens,
       });
       raw = completion.choices[0]?.message?.content ?? '';
-    } catch {
+    } catch (err) {
       throw new LlmUnavailableException('linkedin-post.llm.unavailable');
     }
 

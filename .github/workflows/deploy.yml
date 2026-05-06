@@ -1,0 +1,59 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual deploy'
+        required: false
+        default: 'Manual trigger'
+
+# Only one deploy can run at a time — cancel in-progress runs on new push.
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false   # Wait for the current deploy to finish, don't cancel it.
+
+jobs:
+  deploy:
+    name: Sync code and reload PM2 on VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Gate: skip gracefully when SSH key secret is absent (forks, etc.)
+    if: ${{ vars.VPS_HOST != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Sync source code to VPS via rsync ────────────────────────────────
+      # Excludes node_modules, dist, and local .env so the VPS deploy script
+      # re-installs production dependencies in a clean state.
+      - name: Rsync source to VPS
+        uses: burnett01/rsync-deployments@7.0.1
+        with:
+          switches: >-
+            -avz
+            --delete
+            --exclude=node_modules
+            --exclude=dist
+            --exclude=.env
+            --exclude=.env.*
+            --exclude=.git
+          path: ./
+          remote_path: /home/amadou/impalia/api
+          remote_host: ${{ vars.VPS_HOST }}
+          remote_user: ${{ vars.VPS_USER }}
+          remote_key: ${{ secrets.VPS_SSH_KEY }}
+
+      # ── Run the deploy script on the VPS ─────────────────────────────────
+      # vps-deploy.sh: installs prod deps, compiles TS, reloads PM2 with
+      # zero-downtime (cluster mode), saves PM2 list, runs health check.
+      - name: Build and reload via PM2 on VPS
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ vars.VPS_HOST }}
+          username: ${{ vars.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: bash /home/amadou/impalia/api/scripts/vps-deploy.sh

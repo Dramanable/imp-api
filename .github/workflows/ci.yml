@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  quality:
+    name: Type-check · Lint · Unit tests · E2E tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      # Provide stub values so ConfigService does not throw at bootstrap.
+      # Real secrets are never needed for unit / E2E tests (all LLM calls are mocked).
+      NODE_ENV: test
+      OPENAI_API_KEY: ci-stub-key
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: '6379'
+      PORT: '3000'
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ── Static analysis ──────────────────────────────────────────────────
+      - name: TypeScript type-check (tsc --noEmit)
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: pnpm lint
+
+      # ── Tests ────────────────────────────────────────────────────────────
+      - name: Unit tests
+        run: pnpm test --no-coverage
+
+      - name: E2E tests
+        run: pnpm test:e2e --no-coverage

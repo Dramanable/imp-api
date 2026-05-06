@@ -88,7 +88,7 @@ describe('LinkedInPostController (e2e)', () => {
       .overrideProvider(CACHE_SERVICE)
       .useValue(mockCacheService)
       .overrideProvider(REDIS_CLIENT)
-      .useValue({}) // not used when CACHE_SERVICE is overridden
+      .useValue({ ping: jest.fn().mockResolvedValue('PONG') }) // mock Redis for health check
       .overrideProvider(LOGGER)
       .useValue(NULL_LOGGER)
       .compile();
@@ -334,6 +334,38 @@ describe('LinkedInPostController (e2e)', () => {
         .expect(400);
 
       expect(response.body).toHaveProperty('statusCode', 400);
+    });
+  });
+
+  // ── GET /health ─────────────────────────────────────────────────────────────
+
+  describe('GET /api/v1/health', () => {
+    it('should return 200 with status ok and redis up when Redis responds PONG', async () => {
+      const response = await request(app.getHttpServer())
+        .get('/api/v1/health')
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        status: 'ok',
+        redis: 'up',
+      });
+      expect(typeof response.body.uptime).toBe('number');
+      expect(typeof response.body.timestamp).toBe('string');
+    });
+
+    it('should return status degraded when Redis is down', async () => {
+      // Override the mock to simulate Redis failure for this test only
+      const mockRedis = app.get(REDIS_CLIENT);
+      jest.spyOn(mockRedis, 'ping').mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+      const response = await request(app.getHttpServer())
+        .get('/api/v1/health')
+        .expect(200);
+
+      expect(response.body).toMatchObject({
+        status: 'degraded',
+        redis: 'down',
+      });
     });
   });
 });

@@ -17,6 +17,7 @@ import { RedisCacheService } from './services/redis-cache.service';
 import { InputSanitizerService } from './services/input-sanitizer.service';
 import { PinoLoggerService } from './services/pino-logger.service';
 import { LinkedInPostController } from '../../presentation/rest/features/linkedin-post/controllers/linkedin-post.controller';
+import { HealthController, REDIS_CLIENT_TOKEN } from '../../presentation/rest/features/health/controllers/health.controller';
 import { DomainExceptionFilter } from '../../presentation/rest/filters/domain-exception.filter';
 import type { IPostGenerationService } from '../../core/linkedin-post/domain/services/post-generation.service.interface';
 import type { IInputSanitizer } from '../../core/linkedin-post/domain/services/input-sanitizer.service.interface';
@@ -24,11 +25,10 @@ import type { ICacheService } from '../../core/shared/interfaces/cache.interface
 import type { ILogger } from '../../core/shared/interfaces/logger.interface';
 
 /** Injection token for the shared ioredis client. */
-export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
-
+export const REDIS_CLIENT = REDIS_CLIENT_TOKEN;
 @Module({
   imports: [ConfigModule],
-  controllers: [LinkedInPostController],
+  controllers: [LinkedInPostController, HealthController],
   providers: [
     { provide: APP_FILTER, useClass: DomainExceptionFilter },
     {

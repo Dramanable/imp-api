@@ -18,6 +18,7 @@ import { REDIS_CLIENT } from '../../src/infrastructure/linkedin-post/linkedin-po
 import { LOGGER } from '../../src/core/shared/interfaces/logger.interface';
 import { GeneratedPost } from '../../src/core/linkedin-post/domain/entities/generated-post.entity';
 import { LlmUnavailableException } from '../../src/core/linkedin-post/domain/exceptions/llm-unavailable.exception';
+import { PromptInjectionException } from '../../src/core/linkedin-post/domain/exceptions/prompt-injection.exception';
 import { DomainExceptionFilter } from '../../src/presentation/rest/filters/domain-exception.filter';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -241,6 +242,39 @@ describe('LinkedInPostController (e2e)', () => {
       expect(response.body).toHaveProperty('error', 'linkedin-post.llm.unavailable');
     });
 
+    it('should return 400 with translated message when prompt injection is detected', async () => {
+      const mockSanitizer = app.get(INPUT_SANITIZER);
+      jest.spyOn(mockSanitizer, 'validate').mockImplementationOnce(() => {
+        throw new PromptInjectionException('linkedin-post.validation.prompt_injection_detected');
+      });
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/linkedin-post/generate')
+        .set('Accept-Language', 'fr')
+        .send(VALID_PAYLOAD)
+        .expect(400);
+
+      expect(response.body).toHaveProperty('statusCode', 400);
+      expect(response.body).toHaveProperty('error', 'linkedin-post.validation.prompt_injection_detected');
+      expect(response.body.message).toMatch(/non autoris/i);
+    });
+
+    it('should return 400 with english translated message when prompt injection is detected and Accept-Language is en', async () => {
+      const mockSanitizer = app.get(INPUT_SANITIZER);
+      jest.spyOn(mockSanitizer, 'validate').mockImplementationOnce(() => {
+        throw new PromptInjectionException('linkedin-post.validation.prompt_injection_detected');
+      });
+
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/linkedin-post/generate')
+        .set('Accept-Language', 'en')
+        .send(VALID_PAYLOAD)
+        .expect(400);
+
+      expect(response.body).toHaveProperty('statusCode', 400);
+      expect(response.body.message).toMatch(/disallowed/i);
+    });
+
     it('should return a validation error message for empty companyDescription', async () => {
       const response = await request(app.getHttpServer())
         .post('/api/v1/linkedin-post/generate')
@@ -334,6 +368,40 @@ describe('LinkedInPostController (e2e)', () => {
         .expect(400);
 
       expect(response.body).toHaveProperty('statusCode', 400);
+    });
+
+    it('should emit an error SSE event with a translated message when the LLM is unavailable', async () => {
+      mockPostGenerationService.generateStream.mockImplementation(function* () {
+        throw new LlmUnavailableException('linkedin-post.llm.unavailable');
+      });
+
+      let rawBody = '';
+      await request(app.getHttpServer())
+        .post('/api/v1/linkedin-post/generate/stream')
+        .set('Accept-Language', 'fr')
+        .send({
+          companyDescription: 'Company for stream error test',
+          brief: 'Brief for stream error test',
+          tone: 'expert',
+        })
+        .buffer(true)
+        .parse((_res, callback) => {
+          let data = '';
+          _res.on('data', (chunk: Buffer) => { data += chunk.toString(); });
+          _res.on('end', () => { rawBody = data; callback(null, data); });
+        });
+
+      const events = rawBody
+        .split('\n')
+        .filter((line) => line.startsWith('data: '))
+        .map((line) => JSON.parse(line.replace('data: ', '').trim()));
+
+      const errorEvent = events.find((e) => e.type === 'error');
+      expect(errorEvent).toBeDefined();
+      expect(errorEvent).toHaveProperty('code', 'linkedin-post.llm.unavailable');
+      expect(errorEvent).toHaveProperty('statusCode', 503);
+      expect(typeof errorEvent?.message).toBe('string');
+      expect((errorEvent?.message as string).length).toBeGreaterThan(0);
     });
   });
 

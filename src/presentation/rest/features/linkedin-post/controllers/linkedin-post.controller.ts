@@ -18,14 +18,16 @@ import {
 } from '@nestjs/swagger';
 import { randomUUID } from 'crypto';
 import type { FastifyReply } from 'fastify';
+import { I18nService } from 'nestjs-i18n';
 import {
   GENERATE_LINKEDIN_POST_USE_CASE,
   GenerateLinkedInPostUseCase,
 } from '../../../../../core/linkedin-post/application/use-cases/generate-linkedin-post.use-case';
 import { EmptyInputException } from '../../../../../core/linkedin-post/domain/exceptions/empty-input.exception';
+import { PromptInjectionException } from '../../../../../core/linkedin-post/domain/exceptions/prompt-injection.exception';
 import { GeneratePostDto } from '../dto/generate-post.dto';
 import { GeneratePostResponseDto } from '../dto/generate-post-response.dto';
-import { StreamEventChunkDto, StreamEventDoneDto, StreamEventNoteDto } from '../dto/stream-event.dto';
+import { StreamEventChunkDto, StreamEventDoneDto, StreamEventErrorDto, StreamEventNoteDto } from '../dto/stream-event.dto';
 
 @ApiTags('LinkedIn Post Generation')
 @Controller('linkedin-post')
@@ -33,6 +35,7 @@ export class LinkedInPostController {
   constructor(
     @Inject(GENERATE_LINKEDIN_POST_USE_CASE)
     private readonly generateLinkedInPostUseCase: GenerateLinkedInPostUseCase,
+    private readonly i18nService: I18nService,
   ) {}
 
   // ── Non-streaming endpoint ─────────────────────────────────────────────────
@@ -198,7 +201,9 @@ Each line is \`data: <JSON>\\n\\n\`. See the description above for event types.`
     raw.setHeader('X-Accel-Buffering', 'no'); // Disable Nginx buffering
     raw.flushHeaders?.();
 
-    const sendEvent = (event: StreamEventChunkDto | StreamEventNoteDto | StreamEventDoneDto | { type: 'error'; code: string; statusCode: number }) => {
+    const lang = extractLang(acceptLang);
+
+    const sendEvent = (event: StreamEventChunkDto | StreamEventNoteDto | StreamEventDoneDto | StreamEventErrorDto) => {
       raw.write(`data: ${JSON.stringify(event)}\n\n`);
     };
 
@@ -207,19 +212,43 @@ Each line is \`data: <JSON>\\n\\n\`. See the description above for event types.`
         companyDescription: dto.companyDescription,
         brief: dto.brief,
         tone: dto.tone,
-        lang: extractLang(acceptLang),
+        lang,
         correlationId: correlationId ?? randomUUID(),
       })) {
         sendEvent(event);
       }
     } catch (error) {
-      if (error instanceof EmptyInputException) {
-        sendEvent({ type: 'error', code: (error as EmptyInputException).key, statusCode: 400 });
+      let code: string;
+      let statusCode: 400 | 503;
+
+      if (error instanceof EmptyInputException || error instanceof PromptInjectionException) {
+        code = error.key;
+        statusCode = 400;
       } else {
-        sendEvent({ type: 'error', code: 'linkedin-post.llm.unavailable', statusCode: 503 });
+        code = 'linkedin-post.llm.unavailable';
+        statusCode = 503;
       }
+
+      sendEvent({ type: 'error', code, message: this.translateErrorKey(code, lang), statusCode });
     } finally {
       raw.end();
+    }
+  }
+
+  /**
+   * Translates a domain exception key into a localised message.
+   * Strips the domain prefix (e.g. "linkedin-post.") and looks up "errors.<rest>".
+   * Falls back to the raw key if translation is unavailable.
+   */
+  private translateErrorKey(key: string, lang: string): string {
+    const dotIdx = key.indexOf('.');
+    const subkey = dotIdx !== -1 ? key.slice(dotIdx + 1) : key;
+    const i18nKey = `errors.${subkey}`;
+    try {
+      const msg = this.i18nService.t(i18nKey, { lang }) as string;
+      return msg && msg !== i18nKey ? msg : key;
+    } catch {
+      return key;
     }
   }
 }

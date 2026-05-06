@@ -7,10 +7,26 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
+import { I18nService } from 'nestjs-i18n';
 import compression from '@fastify/compress';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
 import { AppModule } from './app.module';
+
+/** Resolve the primary language code from an Accept-Language header value. */
+function resolveLang(acceptLang?: string): string {
+  if (!acceptLang) return 'fr';
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const primary = acceptLang.split(',')[0]!.split(';')[0]!.trim().slice(0, 2).toLowerCase();
+  return ['fr', 'en'].includes(primary) ? primary : 'fr';
+}
+
+/** Fallback rate-limit message when i18n translation is unavailable. */
+function fallbackRateLimit(lang: string): string {
+  return lang === 'en'
+    ? `Too many requests. Please wait before retrying.`
+    : `Trop de requêtes. Veuillez patienter avant de réessayer.`;
+}
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(
@@ -53,19 +69,32 @@ async function bootstrap() {
   // ── Rate limiting ────────────────────────────────────────────────────────
   // Protects the LLM endpoint from abuse: 20 requests per minute per IP.
   // The 429 response includes a Retry-After header so clients can back off.
+  const i18nService = app.get<I18nService>(I18nService);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await app.register(rateLimit as any, {
     max: 20,
     timeWindow: '1 minute',
     errorResponseBuilder: (
-      _request: unknown,
+      request: { headers: Record<string, string | string[] | undefined> },
       context: { max: number; ttl: number },
-    ) => ({
-      statusCode: 429,
-      error: 'Too Many Requests',
-      message: `Rate limit exceeded: ${context.max} requests per minute allowed.`,
-      retryAfter: Math.ceil(context.ttl / 1000),
-    }),
+    ) => {
+      const headerLang = request.headers['accept-language'];
+      const acceptLang = Array.isArray(headerLang) ? headerLang.at(0) : headerLang;
+      const lang = resolveLang(acceptLang);
+      let message: string;
+      try {
+        const translated = i18nService.t('errors.rate_limit.exceeded', { lang }) as string;
+        message = translated && translated !== 'errors.rate_limit.exceeded' ? translated : fallbackRateLimit(lang);
+      } catch {
+        message = fallbackRateLimit(lang);
+      }
+      return {
+        statusCode: 429,
+        error: 'rate_limit.exceeded',
+        message,
+        retryAfter: Math.ceil(context.ttl / 1000),
+      };
+    },
   });
 
   // ── Routing ─────────────────────────────────────────────────────────────

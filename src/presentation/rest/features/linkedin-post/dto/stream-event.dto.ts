@@ -67,14 +67,21 @@ export class StreamEventErrorDto {
   type: 'error';
 
   @ApiProperty({
-    description: 'Machine-readable error code (i18n key).',
-    example: 'linkedin-post.llm.unavailable',
+    description: 'i18n key identifying the error, for programmatic error handling.',
+    example: 'linkedin-post.validation.company_description_required',
   })
   code: string;
 
   @ApiProperty({
-    description: 'HTTP status code that corresponds to this error.',
-    example: 503,
+    description: 'Translated human-readable error message, localised via Accept-Language.',
+    example: 'La description de l\u2019entreprise est requise.',
   })
-  statusCode: number;
+  message: string;
+
+  @ApiProperty({
+    description: 'HTTP-equivalent status code for this error.',
+    example: 400,
+    enum: [400, 503],
+  })
+  statusCode: 400 | 503;
 }

@@ -9,23 +9,27 @@ import { I18nService } from 'nestjs-i18n';
 import { DomainException } from '../../../core/shared/exceptions/domain.exception';
 import { EmptyInputException } from '../../../core/linkedin-post/domain/exceptions/empty-input.exception';
 import { LlmUnavailableException } from '../../../core/linkedin-post/domain/exceptions/llm-unavailable.exception';
+import { PromptInjectionException } from '../../../core/linkedin-post/domain/exceptions/prompt-injection.exception';
 
 /** Maps a domain exception to an HTTP status code. */
 function resolveStatus(exception: DomainException): HttpStatus {
   if (exception instanceof EmptyInputException) return HttpStatus.BAD_REQUEST;
+  if (exception instanceof PromptInjectionException) return HttpStatus.BAD_REQUEST;
   if (exception instanceof LlmUnavailableException) return HttpStatus.SERVICE_UNAVAILABLE;
   return HttpStatus.INTERNAL_SERVER_ERROR;
 }
 
 /**
  * Translates dot-separated i18n exception keys to a flat `errors.*` key.
+ * Strips any domain prefix before the first dot to support multiple domains.
  * e.g. 'linkedin-post.validation.company_description_required'
  *   → 'errors.validation.company_description_required'
+ * e.g. 'shared.email.invalid' → 'errors.email.invalid'
  */
 function toI18nKey(exceptionKey: string): string {
-  // Remove the domain prefix ("linkedin-post.") and prepend "errors."
-  const withoutDomain = exceptionKey.replace(/^linkedin-post\./, '');
-  return `errors.${withoutDomain}`;
+  const dotIdx = exceptionKey.indexOf('.');
+  const subkey = dotIdx !== -1 ? exceptionKey.slice(dotIdx + 1) : exceptionKey;
+  return `errors.${subkey}`;
 }
 
 /** Extract primary language code from an Accept-Language header value. */

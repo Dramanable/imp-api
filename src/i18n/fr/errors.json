@@ -7,5 +7,8 @@
   "llm": {
     "unavailable": "Le service de génération est temporairement indisponible. Veuillez réessayer dans quelques instants.",
     "invalid_response": "Le modèle a retourné une réponse invalide. Veuillez réessayer."
+  },
+  "rate_limit": {
+    "exceeded": "Trop de requêtes. Veuillez patienter avant de réessayer."
   }
 }

@@ -227,7 +227,11 @@ Each line is \`data: <JSON>\\n\\n\`. See the description above for event types.`
 /** Extract the primary language code from an Accept-Language header value. */
 function extractLang(acceptLang?: string): string {
   if (!acceptLang) return 'fr';
-  const primary = acceptLang.split(',')[0].split(';')[0].trim().slice(0, 2).toLowerCase();
+  // Array indexing is safe here: split always returns at least one element.
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const part0 = acceptLang.split(',')[0]!;
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const primary = part0.split(';')[0]!.trim().slice(0, 2).toLowerCase();
   return ['fr', 'en'].includes(primary) ? primary : 'fr';
 }
 

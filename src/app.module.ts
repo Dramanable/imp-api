@@ -29,16 +29,23 @@ import { LinkedInPostModule } from './infrastructure/linkedin-post/linkedin-post
     LoggerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        pinoHttp: {
-          level: config.get<string>('LOG_LEVEL', 'info'),
-          transport:
-            config.get<string>('NODE_ENV') !== 'production'
-              ? { target: 'pino-pretty', options: { colorize: true, singleLine: false } }
-              : undefined,
-          redact: ['req.headers.authorization', 'req.headers.cookie'],
-        },
-      }),
+      useFactory: (config: ConfigService) => {
+        const isProd = config.get<string>('NODE_ENV') === 'production';
+        return {
+          pinoHttp: {
+            level: config.get<string>('LOG_LEVEL', 'info'),
+            ...(isProd
+              ? {}
+              : {
+                  transport: {
+                    target: 'pino-pretty',
+                    options: { colorize: true, singleLine: false },
+                  },
+                }),
+            redact: ['req.headers.authorization', 'req.headers.cookie'],
+          },
+        };
+      },
     }),
 
     // ── Feature modules ────────────────────────────────────────────────────

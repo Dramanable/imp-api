@@ -33,8 +33,11 @@ function makeMockService(
 function makeMockCache(): ICacheService {
   const store = new Map<string, unknown>();
   return {
-    get: jest.fn((key: string) => store.get(key) ?? null),
-    set: jest.fn((key: string, value: unknown) => store.set(key, value)),
+    get: jest.fn(function <T>(key: string): T | null {
+      const val = store.get(key);
+      return val !== undefined ? (val as T) : null;
+    }) as ICacheService['get'],
+    set: jest.fn((key: string, value: unknown) => { store.set(key, value); }),
   };
 }
 

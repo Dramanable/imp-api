@@ -12,7 +12,7 @@ import {
   GENERATE_LINKEDIN_POST_USE_CASE,
   GenerateLinkedInPostUseCase,
 } from '../../core/linkedin-post/application/use-cases/generate-linkedin-post.use-case';
-import { OpenAiPostGenerationService } from './services/openai-post-generation.service';
+import { createLlmProvider } from './services/llm-provider.factory';
 import { RedisCacheService } from './services/redis-cache.service';
 import { InputSanitizerService } from './services/input-sanitizer.service';
 import { PinoLoggerService } from './services/pino-logger.service';
@@ -69,13 +69,7 @@ export const REDIS_CLIENT = REDIS_CLIENT_TOKEN;
     {
       provide: POST_GENERATION_SERVICE,
       useFactory: (configService: ConfigService, i18nService: I18nService) =>
-        new OpenAiPostGenerationService(
-          configService.getOrThrow<string>('OPENAI_API_KEY'),
-          configService.get<string>('OPENAI_MODEL', 'gpt-4o-mini'),
-          i18nService,
-          configService.get<number>('LLM_TEMPERATURE', 0.7),
-          configService.get<number>('LLM_MAX_TOKENS', 1_024),
-        ),
+        createLlmProvider(configService, i18nService),
       inject: [ConfigService, I18nService],
     },
     {

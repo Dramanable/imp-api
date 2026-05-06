@@ -166,6 +166,10 @@ The \`tone\` field accepts any non-empty string (max 100 characters):
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document, {
     swaggerOptions: {
+      // Explicit JSON URL prevents Swagger UI from falling back to
+      // window.location.origin as the spec URL, which returns HTML and
+      // causes the UI to render empty.
+      url: '/api/docs-json',
       persistAuthorization: true,
       tagsSorter: 'alpha',
       operationsSorter: 'alpha',

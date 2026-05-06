@@ -9,6 +9,10 @@
     "invalid_response": "Le modèle a retourné une réponse invalide. Veuillez réessayer."
   },
   "rate_limit": {
-    "exceeded": "Trop de requêtes. Veuillez patienter avant de réessayer."
-  }
+    "exceeded": "Trop de requêtes. Veuillez patienter avant de réessayer."  },
+  "class_validator": {
+    "isNotEmpty": "Ce champ est obligatoire.",
+    "isString": "Ce champ doit \u00eatre une cha\u00eene de caract\u00e8res.",
+    "maxLength": "Ce champ ne peut pas d\u00e9passer {constraint1} caract\u00e8res.",
+    "isWhitelisted": "La propri\u00e9t\u00e9 {property} n'est pas autoris\u00e9e."  }
 }

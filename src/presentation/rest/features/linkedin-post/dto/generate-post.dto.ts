@@ -1,5 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsNotEmpty, IsString, MaxLength } from 'class-validator';
+import { i18nValidationMessage } from 'nestjs-i18n';
 import { PREDEFINED_TONES } from '../../../../../core/linkedin-post/domain/value-objects/tone-of-voice.vo';
 
 export class GeneratePostDto {
@@ -15,9 +16,9 @@ export class GeneratePostDto {
       'Fondée en 2018, elle accompagne ses clients avec une approche pragmatique, centrée sur la valeur ajoutée immédiate. ' +
       'Valeurs : innovation ancrée, proximité client, impact durable. Cible : DSI et dirigeants de PME industrielles (100-500 salariés).',
   })
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(2000)
+  @IsString({ message: i18nValidationMessage('errors.class_validator.isString') })
+  @IsNotEmpty({ message: i18nValidationMessage('errors.class_validator.isNotEmpty') })
+  @MaxLength(2000, { message: i18nValidationMessage('errors.class_validator.maxLength') })
   companyDescription: string;
 
   @ApiProperty({
@@ -31,9 +32,9 @@ export class GeneratePostDto {
     example:
       'Annonce de recrutement : nous cherchons un ingénieur DevOps senior pour renforcer notre équipe infrastructure.',
   })
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(500)
+  @IsString({ message: i18nValidationMessage('errors.class_validator.isString') })
+  @IsNotEmpty({ message: i18nValidationMessage('errors.class_validator.isNotEmpty') })
+  @MaxLength(500, { message: i18nValidationMessage('errors.class_validator.maxLength') })
   brief: string;
 
   @ApiProperty({
@@ -61,9 +62,9 @@ export class GeneratePostDto {
     default: PREDEFINED_TONES.PROFESSIONAL,
     example: PREDEFINED_TONES.PROFESSIONAL,
   })
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(100)
+  @IsString({ message: i18nValidationMessage('errors.class_validator.isString') })
+  @IsNotEmpty({ message: i18nValidationMessage('errors.class_validator.isNotEmpty') })
+  @MaxLength(100, { message: i18nValidationMessage('errors.class_validator.maxLength') })
   tone: string;
 }
 

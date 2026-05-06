@@ -3,11 +3,10 @@ import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
-import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
-import { I18nService } from 'nestjs-i18n';
+import { I18nService, I18nValidationPipe } from 'nestjs-i18n';
 import compression from '@fastify/compress';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
@@ -116,8 +115,13 @@ async function bootstrap() {
   });
 
   // ── Validation ───────────────────────────────────────────────────────────
+  // I18nValidationPipe extends ValidationPipe and wires an i18nValidationErrorFactory
+  // that translates class-validator constraint messages using the request's I18nContext
+  // before the exception is thrown. The ValidationExceptionFilter (registered in
+  // LinkedInPostModule via APP_FILTER) catches the resulting I18nValidationException and
+  // formats the translated messages into the project's standard error envelope.
   app.useGlobalPipes(
-    new ValidationPipe({
+    new I18nValidationPipe({
       whitelist: true,            // Strip unknown properties silently.
       forbidNonWhitelisted: true, // Reject requests with unknown properties.
       transform: true,            // Auto-cast primitive types.

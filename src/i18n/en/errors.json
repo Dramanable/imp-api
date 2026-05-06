@@ -10,5 +10,11 @@
   },
   "rate_limit": {
     "exceeded": "Too many requests. Please wait before retrying."
+  },
+  "class_validator": {
+    "isNotEmpty": "This field is required.",
+    "isString": "This field must be a string.",
+    "maxLength": "This field cannot exceed {constraint1} characters.",
+    "isWhitelisted": "Property {property} is not allowed."
   }
 }

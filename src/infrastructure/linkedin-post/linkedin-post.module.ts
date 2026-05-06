@@ -19,6 +19,7 @@ import { PinoLoggerService } from './services/pino-logger.service';
 import { LinkedInPostController } from '../../presentation/rest/features/linkedin-post/controllers/linkedin-post.controller';
 import { HealthController, REDIS_CLIENT_TOKEN } from '../../presentation/rest/features/health/controllers/health.controller';
 import { DomainExceptionFilter } from '../../presentation/rest/filters/domain-exception.filter';
+import { ValidationExceptionFilter } from '../../presentation/rest/filters/validation-exception.filter';
 import type { IPostGenerationService } from '../../core/linkedin-post/domain/services/post-generation.service.interface';
 import type { IInputSanitizer } from '../../core/linkedin-post/domain/services/input-sanitizer.service.interface';
 import type { ICacheService } from '../../core/shared/interfaces/cache.interface';
@@ -31,6 +32,7 @@ export const REDIS_CLIENT = REDIS_CLIENT_TOKEN;
   controllers: [LinkedInPostController, HealthController],
   providers: [
     { provide: APP_FILTER, useClass: DomainExceptionFilter },
+    { provide: APP_FILTER, useClass: ValidationExceptionFilter },
     {
       provide: LOGGER,
       useFactory: (pinoLogger: PinoLogger) => new PinoLoggerService(pinoLogger),

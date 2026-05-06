@@ -1,4 +1,4 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import {
   FastifyAdapter,
   NestFastifyApplication,
@@ -7,7 +7,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { join } from 'path';
-import { AcceptLanguageResolver, I18nModule, QueryResolver } from 'nestjs-i18n';
+import { AcceptLanguageResolver, I18nModule, I18nValidationPipe, QueryResolver } from 'nestjs-i18n';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER } from '@nestjs/core';
 import { LinkedInPostModule } from '../../src/infrastructure/linkedin-post/linkedin-post.module';
@@ -99,7 +99,7 @@ describe('LinkedInPostController (e2e)', () => {
     );
     app.setGlobalPrefix('api/v1');
     app.useGlobalPipes(
-      new ValidationPipe({
+      new I18nValidationPipe({
         whitelist: true,
         forbidNonWhitelisted: true,
         transform: true,
@@ -281,11 +281,13 @@ describe('LinkedInPostController (e2e)', () => {
         .send({ ...VALID_PAYLOAD, companyDescription: '' })
         .expect(400);
 
-      // NestJS ValidationPipe returns message as an array of strings
+      // I18nValidationPipe + ValidationExceptionFilter return translated messages.
+      // The error key 'errors.class_validator.isNotEmpty' resolves to:
+      //   fr: "Ce champ est obligatoire."  en: "This field is required."
       const messages: string[] = Array.isArray(response.body.message)
         ? response.body.message
-        : [response.body.message];
-      expect(messages.some((m: string) => /description/i.test(m))).toBe(true);
+        : [response.body.message as string];
+      expect(messages.some((m: string) => /obligatoire|required/i.test(m))).toBe(true);
     });
 
     it('should return 400 for empty companyDescription with Accept-Language en', async () => {

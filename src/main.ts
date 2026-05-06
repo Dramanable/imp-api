@@ -55,15 +55,29 @@ async function bootstrap() {
     contentSecurityPolicy: isProduction,
   });
 
-  // ── Compression (Brotli → gzip → deflate) ───────────────────────────────
-  // Compresses all non-SSE responses above 1 KB.
-  // SSE responses set their own Content-Type and are excluded automatically.
+  // ── Compression (gzip → deflate) ────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await app.register(compression as any, {
     global: true,
     threshold: 1024,
-    encodings: ['br', 'gzip', 'deflate'],
+    encodings: ['gzip', 'deflate'],
   });
+
+  // @fastify/compress 8.x produces Content-Length: 0 (empty body) for
+  // dynamically-generated string payloads (e.g. swagger-ui-init.js) when any
+  // compression encoding is negotiated — this is a known incompatibility with
+  // Fastify v5 + Node 24.  Work around it by forcing identity encoding on all
+  // Swagger UI routes so the compress onSend hook skips them entirely.
+  app.getHttpAdapter().getInstance().addHook(
+    'onRequest',
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (request: any, _reply: any, done: () => void) => {
+      if (request.url?.startsWith('/api/docs')) {
+        request.headers['accept-encoding'] = 'identity';
+      }
+      done();
+    },
+  );
 
   // ── Rate limiting ────────────────────────────────────────────────────────
   // Protects the LLM endpoint from abuse: 20 requests per minute per IP.
@@ -143,7 +157,7 @@ the service handles prompt engineering, LLM orchestration, caching, and streamin
 - **Open tone-of-voice**: use predefined suggestions or any custom string (e.g. \`"empathetic and bold"\`)
 - **Server-side cache** (in-memory, TTL configurable via \`CACHE_TTL_MS\`) to avoid redundant LLM calls
 - **Streaming endpoint** (\`POST /linkedin-post/generate/stream\`) using Server-Sent Events
-- **Brotli / gzip compression** on all non-SSE responses via \`@fastify/compress\`
+- **gzip / deflate compression** on all non-SSE responses via \`@fastify/compress\`
 - **Security headers** (Helmet/OWASP) via \`@fastify/helmet\`
 - **Structured JSON logging** with Pino
 - LinkedIn post limited to **1,300 characters** (LinkedIn platform limit)

@@ -13,6 +13,6 @@
   "class_validator": {
     "isNotEmpty": "Ce champ est obligatoire.",
     "isString": "Ce champ doit \u00eatre une cha\u00eene de caract\u00e8res.",
-    "maxLength": "Ce champ ne peut pas d\u00e9passer {constraint1} caract\u00e8res.",
+    "maxLength": "Ce champ ne peut pas d\u00e9passer {constraints.0} caract\u00e8res.",
     "isWhitelisted": "La propri\u00e9t\u00e9 {property} n'est pas autoris\u00e9e."  }
 }

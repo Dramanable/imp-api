@@ -14,7 +14,7 @@
   "class_validator": {
     "isNotEmpty": "This field is required.",
     "isString": "This field must be a string.",
-    "maxLength": "This field cannot exceed {constraint1} characters.",
+    "maxLength": "This field cannot exceed {constraints.0} characters.",
     "isWhitelisted": "Property {property} is not allowed."
   }
 }

@@ -13,8 +13,27 @@ import { LinkedInPostModule } from './infrastructure/linkedin-post/linkedin-post
     // ── Internationalisation ───────────────────────────────────────────────
     // Default language: French. Supports fr and en.
     // Language is resolved from the Accept-Language header or the `lang` query param.
+    // formatter: simple dot-notation {path.to.value} interpolation used by
+    // class-validator messages (e.g. {constraints.0} for the first constraint).
     I18nModule.forRoot({
       fallbackLanguage: 'fr',
+      formatter: (template: string, ...formatterArgs: unknown[]): string => {
+        const data = formatterArgs.find(
+          (a): a is Record<string, unknown> =>
+            typeof a === 'object' && a !== null && !Array.isArray(a),
+        ) ?? {};
+        return template.replace(/\{([^{}]+)\}/g, (_match, rawPath: string) => {
+          const parts = rawPath.trim().split('.');
+          let value: unknown = data;
+          for (const part of parts) {
+            if (value === null || value === undefined || typeof value !== 'object') {
+              return '';
+            }
+            value = (value as Record<string, unknown>)[part];
+          }
+          return value !== undefined && value !== null ? String(value) : '';
+        });
+      },
       loaderOptions: {
         path: join(__dirname, 'i18n'),
         watch: true,

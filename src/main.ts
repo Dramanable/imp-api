@@ -162,6 +162,8 @@ The \`tone\` field accepts any non-empty string (max 100 characters):
     )
     .setVersion('1.0')
     .addServer(`http://localhost:${port}`, 'Local development')
+    .addTag('LinkedIn Post Generation', 'Generate LinkedIn posts via LLM (JSON and streaming)')
+    .addTag('Health', 'Service health check')
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);

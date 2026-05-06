@@ -1,6 +1,7 @@
 import { PostGenerationRequest } from '../../domain/value-objects/post-generation-request.vo';
 import { GeneratedPost } from '../../domain/entities/generated-post.entity';
 import { IPostGenerationService } from '../../domain/services/post-generation.service.interface';
+import { IInputSanitizer } from '../../domain/services/input-sanitizer.service.interface';
 import { ICacheService } from '../../../shared/interfaces/cache.interface';
 import { ILogger } from '../../../shared/interfaces/logger.interface';
 import { EmptyInputException } from '../../domain/exceptions/empty-input.exception';
@@ -46,6 +47,7 @@ export class GenerateLinkedInPostUseCase {
     private readonly postGenerationService: IPostGenerationService,
     private readonly cacheService: ICacheService,
     private readonly logger: ILogger,
+    private readonly inputSanitizer: IInputSanitizer,
   ) {}
 
   // ── Non-streaming (JSON response) ─────────────────────────────────────────
@@ -55,6 +57,7 @@ export class GenerateLinkedInPostUseCase {
   ): Promise<GenerateLinkedInPostOutput> {
     const { companyDescription, brief, tone, lang, correlationId } = input;
 
+    this.inputSanitizer.validate(companyDescription, brief);
     this.validateInputs(companyDescription, brief);
 
     const cacheKey = this.buildCacheKey(companyDescription, brief, tone, lang);
@@ -109,6 +112,7 @@ export class GenerateLinkedInPostUseCase {
   ): AsyncGenerator<StreamEvent> {
     const { companyDescription, brief, tone, lang, correlationId } = input;
 
+    this.inputSanitizer.validate(companyDescription, brief);
     this.validateInputs(companyDescription, brief);
 
     const cacheKey = this.buildCacheKey(companyDescription, brief, tone, lang);

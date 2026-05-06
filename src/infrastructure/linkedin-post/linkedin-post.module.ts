@@ -5,6 +5,7 @@ import { PinoLogger } from 'nestjs-pino';
 import { I18nService } from 'nestjs-i18n';
 import Redis from 'ioredis';
 import { POST_GENERATION_SERVICE } from '../../core/linkedin-post/domain/services/post-generation.service.interface';
+import { INPUT_SANITIZER } from '../../core/linkedin-post/domain/services/input-sanitizer.service.interface';
 import { CACHE_SERVICE } from '../../core/shared/interfaces/cache.interface';
 import { LOGGER } from '../../core/shared/interfaces/logger.interface';
 import {
@@ -13,10 +14,12 @@ import {
 } from '../../core/linkedin-post/application/use-cases/generate-linkedin-post.use-case';
 import { OpenAiPostGenerationService } from './services/openai-post-generation.service';
 import { RedisCacheService } from './services/redis-cache.service';
+import { InputSanitizerService } from './services/input-sanitizer.service';
 import { PinoLoggerService } from './services/pino-logger.service';
 import { LinkedInPostController } from '../../presentation/rest/features/linkedin-post/controllers/linkedin-post.controller';
 import { DomainExceptionFilter } from '../../presentation/rest/filters/domain-exception.filter';
 import type { IPostGenerationService } from '../../core/linkedin-post/domain/services/post-generation.service.interface';
+import type { IInputSanitizer } from '../../core/linkedin-post/domain/services/input-sanitizer.service.interface';
 import type { ICacheService } from '../../core/shared/interfaces/cache.interface';
 import type { ILogger } from '../../core/shared/interfaces/logger.interface';
 
@@ -60,6 +63,10 @@ export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
       inject: [REDIS_CLIENT, ConfigService],
     },
     {
+      provide: INPUT_SANITIZER,
+      useClass: InputSanitizerService,
+    },
+    {
       provide: POST_GENERATION_SERVICE,
       useFactory: (configService: ConfigService, i18nService: I18nService) =>
         new OpenAiPostGenerationService(
@@ -77,9 +84,10 @@ export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
         postGenService: IPostGenerationService,
         cacheService: ICacheService,
         logger: ILogger,
+        sanitizer: IInputSanitizer,
       ) =>
-        new GenerateLinkedInPostUseCase(postGenService, cacheService, logger),
-      inject: [POST_GENERATION_SERVICE, CACHE_SERVICE, LOGGER],
+        new GenerateLinkedInPostUseCase(postGenService, cacheService, logger, sanitizer),
+      inject: [POST_GENERATION_SERVICE, CACHE_SERVICE, LOGGER, INPUT_SANITIZER],
     },
   ],
 })

@@ -12,6 +12,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER } from '@nestjs/core';
 import { LinkedInPostModule } from '../../src/infrastructure/linkedin-post/linkedin-post.module';
 import { POST_GENERATION_SERVICE } from '../../src/core/linkedin-post/domain/services/post-generation.service.interface';
+import { INPUT_SANITIZER } from '../../src/core/linkedin-post/domain/services/input-sanitizer.service.interface';
 import { CACHE_SERVICE } from '../../src/core/shared/interfaces/cache.interface';
 import { REDIS_CLIENT } from '../../src/infrastructure/linkedin-post/linkedin-post.module';
 import { LOGGER } from '../../src/core/shared/interfaces/logger.interface';
@@ -82,6 +83,8 @@ describe('LinkedInPostController (e2e)', () => {
     })
       .overrideProvider(POST_GENERATION_SERVICE)
       .useValue(mockPostGenerationService)
+      .overrideProvider(INPUT_SANITIZER)
+      .useValue({ validate: jest.fn() }) // no-op sanitizer in E2E tests
       .overrideProvider(CACHE_SERVICE)
       .useValue(mockCacheService)
       .overrideProvider(REDIS_CLIENT)

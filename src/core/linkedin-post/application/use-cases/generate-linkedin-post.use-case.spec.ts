@@ -2,7 +2,9 @@ import { GenerateLinkedInPostUseCase } from './generate-linkedin-post.use-case';
 import { GeneratedPost } from '../../domain/entities/generated-post.entity';
 import { EmptyInputException } from '../../domain/exceptions/empty-input.exception';
 import { LlmUnavailableException } from '../../domain/exceptions/llm-unavailable.exception';
+import { PromptInjectionException } from '../../domain/exceptions/prompt-injection.exception';
 import { IPostGenerationService } from '../../domain/services/post-generation.service.interface';
+import { IInputSanitizer } from '../../domain/services/input-sanitizer.service.interface';
 import { ICacheService } from '../../../shared/interfaces/cache.interface';
 import { ILogger } from '../../../shared/interfaces/logger.interface';
 
@@ -51,6 +53,10 @@ const mockLogger: ILogger = {
   error: jest.fn(),
 };
 
+const mockSanitizer: IInputSanitizer = {
+  validate: jest.fn(),
+};
+
 const BASE_INPUT = {
   companyDescription: 'TechFlow, spécialiste de la transformation numérique.',
   brief: 'Annonce de recrutement DevOps senior.',
@@ -70,7 +76,7 @@ describe('GenerateLinkedInPostUseCase.execute()', () => {
     jest.clearAllMocks();
     service = makeMockService();
     cache = makeMockCache();
-    useCase = new GenerateLinkedInPostUseCase(service, cache, mockLogger);
+    useCase = new GenerateLinkedInPostUseCase(service, cache, mockLogger, mockSanitizer);
   });
 
   it('should call the generation service and return a result', async () => {
@@ -124,6 +130,16 @@ describe('GenerateLinkedInPostUseCase.execute()', () => {
     ).rejects.toBeInstanceOf(EmptyInputException);
   });
 
+  it('should throw PromptInjectionException when sanitizer rejects input', async () => {
+    (mockSanitizer.validate as jest.Mock).mockImplementationOnce(() => {
+      throw new PromptInjectionException('linkedin-post.validation.prompt_injection_detected');
+    });
+
+    await expect(useCase.execute(BASE_INPUT)).rejects.toBeInstanceOf(
+      PromptInjectionException,
+    );
+  });
+
   it('should rethrow LlmUnavailableException from the service', async () => {
     (service.generate as jest.Mock).mockRejectedValueOnce(
       new LlmUnavailableException('linkedin-post.llm.unavailable'),
@@ -164,7 +180,7 @@ describe('GenerateLinkedInPostUseCase.executeStream()', () => {
     jest.clearAllMocks();
     service = makeMockService();
     cache = makeMockCache();
-    useCase = new GenerateLinkedInPostUseCase(service, cache, mockLogger);
+    useCase = new GenerateLinkedInPostUseCase(service, cache, mockLogger, mockSanitizer);
   });
 
   it('should emit chunk, note, and done events', async () => {

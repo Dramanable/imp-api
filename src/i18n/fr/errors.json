@@ -1,7 +1,8 @@
 {
   "validation": {
     "company_description_required": "La description de l'entreprise est requise.",
-    "brief_required": "Le brief est requis."
+    "brief_required": "Le brief est requis.",
+    "prompt_injection_detected": "Le contenu soumis contient des éléments non autorisés. Veuillez reformuler votre saisie."
   },
   "llm": {
     "unavailable": "Le service de génération est temporairement indisponible. Veuillez réessayer dans quelques instants.",

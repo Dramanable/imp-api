@@ -1,7 +1,8 @@
 {
   "validation": {
     "company_description_required": "Company description is required.",
-    "brief_required": "Brief is required."
+    "brief_required": "Brief is required.",
+    "prompt_injection_detected": "The submitted content contains disallowed patterns. Please rephrase your input."
   },
   "llm": {
     "unavailable": "The generation service is temporarily unavailable. Please try again shortly.",

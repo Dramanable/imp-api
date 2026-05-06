@@ -12,6 +12,8 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER } from '@nestjs/core';
 import { LinkedInPostModule } from '../../src/infrastructure/linkedin-post/linkedin-post.module';
 import { POST_GENERATION_SERVICE } from '../../src/core/linkedin-post/domain/services/post-generation.service.interface';
+import { CACHE_SERVICE } from '../../src/core/shared/interfaces/cache.interface';
+import { REDIS_CLIENT } from '../../src/infrastructure/linkedin-post/linkedin-post.module';
 import { LOGGER } from '../../src/core/shared/interfaces/logger.interface';
 import { GeneratedPost } from '../../src/core/linkedin-post/domain/entities/generated-post.entity';
 import { LlmUnavailableException } from '../../src/core/linkedin-post/domain/exceptions/llm-unavailable.exception';
@@ -33,6 +35,16 @@ const NULL_LOGGER = {
   error: () => {},
 };
 
+/** Lightweight async in-memory cache stub used in E2E tests to avoid Redis. */
+function makeInMemoryAsyncCache() {
+  const store = new Map<string, unknown>();
+  return {
+    get: jest.fn(async (key: string) => store.get(key) ?? null),
+    set: jest.fn(async (key: string, value: unknown) => { store.set(key, value); }),
+    clear: () => store.clear(),
+  };
+}
+
 async function* fakeStream(post: string, note: string): AsyncGenerator<string> {
   yield post;
   yield '---NOTE---';
@@ -48,6 +60,8 @@ describe('LinkedInPostController (e2e)', () => {
     generate: jest.fn(),
     generateStream: jest.fn(),
   };
+
+  const mockCacheService = makeInMemoryAsyncCache();
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -68,6 +82,10 @@ describe('LinkedInPostController (e2e)', () => {
     })
       .overrideProvider(POST_GENERATION_SERVICE)
       .useValue(mockPostGenerationService)
+      .overrideProvider(CACHE_SERVICE)
+      .useValue(mockCacheService)
+      .overrideProvider(REDIS_CLIENT)
+      .useValue({}) // not used when CACHE_SERVICE is overridden
       .overrideProvider(LOGGER)
       .useValue(NULL_LOGGER)
       .compile();
@@ -93,6 +111,7 @@ describe('LinkedInPostController (e2e)', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCacheService.clear();
   });
 
   // ── POST /generate ─────────────────────────────────────────────────────────

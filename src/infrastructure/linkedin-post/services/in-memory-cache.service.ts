@@ -15,7 +15,7 @@ export class InMemoryCacheService implements ICacheService {
     this.defaultTtlMs = ttlMs;
   }
 
-  get<T>(key: string): T | null {
+  async get<T>(key: string): Promise<T | null> {
     const entry = this.store.get(key);
     if (!entry) return null;
     if (Date.now() > entry.expiresAt) {
@@ -25,7 +25,7 @@ export class InMemoryCacheService implements ICacheService {
     return entry.value as T;
   }
 
-  set<T>(key: string, value: T, ttlMs?: number): void {
+  async set<T>(key: string, value: T, ttlMs?: number): Promise<void> {
     const ttl = ttlMs ?? this.defaultTtlMs;
     this.store.set(key, { value, expiresAt: Date.now() + ttl });
   }

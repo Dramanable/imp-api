@@ -59,7 +59,7 @@ export class GenerateLinkedInPostUseCase {
 
     const cacheKey = this.buildCacheKey(companyDescription, brief, tone, lang);
 
-    const cached = this.cacheService.get<GeneratedPost>(cacheKey);
+    const cached = await this.cacheService.get<GeneratedPost>(cacheKey);
     if (cached) {
       this.logger.debug('Cache hit for LinkedIn post generation', {
         action: 'GenerateLinkedInPost',
@@ -91,7 +91,7 @@ export class GenerateLinkedInPostUseCase {
       throw new LlmUnavailableException('linkedin-post.llm.unavailable', { correlationId });
     }
 
-    this.cacheService.set(cacheKey, generatedPost);
+    await this.cacheService.set(cacheKey, generatedPost);
 
     this.logger.info('LinkedIn post generated successfully', {
       action: 'GenerateLinkedInPost',
@@ -114,7 +114,7 @@ export class GenerateLinkedInPostUseCase {
     const cacheKey = this.buildCacheKey(companyDescription, brief, tone, lang);
 
     // Cache hit → emit cached content as a fake stream
-    const cached = this.cacheService.get<GeneratedPost>(cacheKey);
+    const cached = await this.cacheService.get<GeneratedPost>(cacheKey);
     if (cached) {
       this.logger.debug('Cache hit for LinkedIn post stream', {
         action: 'GenerateLinkedInPostStream',
@@ -190,7 +190,7 @@ export class GenerateLinkedInPostUseCase {
       .slice(0, MAX_POST_CHARS);
     const note = (sepIdx !== -1 ? accumulated.slice(sepIdx + NOTE_SEPARATOR.length) : '').trim();
 
-    this.cacheService.set(cacheKey, new GeneratedPost(post, note));
+    await this.cacheService.set(cacheKey, new GeneratedPost(post, note));
 
     this.logger.info('LinkedIn post streamed successfully', {
       action: 'GenerateLinkedInPostStream',

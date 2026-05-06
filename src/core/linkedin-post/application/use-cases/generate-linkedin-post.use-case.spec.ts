@@ -33,11 +33,14 @@ function makeMockService(
 function makeMockCache(): ICacheService {
   const store = new Map<string, unknown>();
   return {
-    get: jest.fn(function <T>(key: string): T | null {
+    get: jest.fn(function <T>(key: string): Promise<T | null> {
       const val = store.get(key);
-      return val !== undefined ? (val as T) : null;
+      return Promise.resolve(val !== undefined ? (val as T) : null);
     }) as ICacheService['get'],
-    set: jest.fn((key: string, value: unknown) => { store.set(key, value); }),
+    set: jest.fn(function <T>(key: string, value: T): Promise<void> {
+      store.set(key, value);
+      return Promise.resolve();
+    }) as ICacheService['set'],
   };
 }
 

@@ -101,11 +101,10 @@ test-e2e: ## Run E2E tests
 #  Workflow: vps-setup → vps-nginx → vps-ssl → ship → vps-deploy
 # ═══════════════════════════════════════════════════════════════════════════════
 
-vps-setup: ## Install Node 24, pnpm, Redis, Nginx, PM2, Certbot on the VPS (run once)
-	@echo "$(YELLOW)🔧 Provisioning VPS $(VPS_HOST)...$(NC)"
-	@scp scripts/vps-setup.sh $(VPS_USER)@$(VPS_HOST):~/vps-setup.sh
-	@ssh -t $(VPS_USER)@$(VPS_HOST) "bash ~/vps-setup.sh && rm ~/vps-setup.sh"
-	@echo "$(GREEN)✅ VPS provisioned$(NC)"
+vps-setup: ## Install Node 24, pnpm, Redis, Nginx, PM2, Certbot on the VPS (run once — already done)
+	@echo "$(YELLOW)⚠️  VPS already provisioned. To force re-provision:$(NC)"
+	@echo "  scp scripts/vps-setup.sh $(VPS_USER)@$(VPS_HOST):~/vps-setup.sh"
+	@echo "  ssh -t $(VPS_USER)@$(VPS_HOST) 'bash ~/vps-setup.sh && rm ~/vps-setup.sh'"
 
 vps-nginx: ## Deploy Nginx config for $(DOMAIN) and reload Nginx
 	@echo "$(YELLOW)🌐 Installing Nginx config for $(DOMAIN)...$(NC)"

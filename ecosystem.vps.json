@@ -22,7 +22,8 @@
 
       "env_production": {
         "NODE_ENV": "production",
-        "PORT": 3000
+        "PORT": 3000,
+        "CORS_ORIGIN": "https://test-imp.a3s-securite.com"
       },
 
       "error_file": "/home/amadou/impalia/logs/error.log",

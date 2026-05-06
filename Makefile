@@ -22,7 +22,7 @@ NC     = \033[0m
 .PHONY: dev-up dev-down dev-restart dev-logs dev-shell dev-test
 .PHONY: build lint test test-e2e
 .PHONY: vps-setup vps-nginx vps-ssl vps-ssl-renew
-.PHONY: ship vps-deploy vps-redeploy vps-app-restart vps-app-reload
+.PHONY: ship vps-env vps-deploy vps-first-deploy vps-redeploy vps-app-restart vps-app-reload
 .PHONY: vps-status vps-logs vps-health vps-tail
 .PHONY: status clean
 .DEFAULT_GOAL := help
@@ -135,7 +135,7 @@ vps-ssl-renew: ## Dry-run SSL certificate renewal
 #  VPS DEPLOYMENT
 # ═══════════════════════════════════════════════════════════════════════════════
 
-ship: ## Sync source code to the VPS via rsync (excludes node_modules, dist, .env)
+ship: ## Sync source code to the VPS via rsync (excludes node_modules, dist, .env*)
 	@echo "$(YELLOW)📦 Syncing code → $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)...$(NC)"
 	@ssh $(VPS_USER)@$(VPS_HOST) "mkdir -p $(VPS_DIR)/scripts $(VPS_DIR)/nginx"
 	@rsync -az --delete \
@@ -145,26 +145,32 @@ ship: ## Sync source code to the VPS via rsync (excludes node_modules, dist, .en
 		--exclude='logs/' \
 		--exclude='*.log' \
 		--exclude='.env' \
-		--exclude='.env.development*' \
-		--exclude='.env.test*' \
-		--filter='protect .env.production' \
+		--exclude='.env.*' \
 		$(PWD)/ $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)/
 	@echo "$(GREEN)✅ Code synced to $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)$(NC)"
+
+vps-env: ## Deploy .env.production to the VPS as .env (contains OPENAI_API_KEY)
+	@if [ ! -f .env.production ]; then echo "$(RED)❌ .env.production not found. Create it from .env.production.example$(NC)"; exit 1; fi
+	@echo "$(YELLOW)🔑 Uploading production secrets to VPS...$(NC)"
+	@scp .env.production $(VPS_USER)@$(VPS_HOST):$(VPS_DIR)/.env
+	@echo "$(GREEN)✅ .env.production → $(VPS_DIR)/.env$(NC)"
 
 vps-deploy: ship ## Sync code + install deps + build + PM2 reload (subsequent deploys)
 	@echo "$(YELLOW)🚀 Deploying to VPS...$(NC)"
 	@ssh -t $(VPS_USER)@$(VPS_HOST) "bash $(VPS_DIR)/scripts/vps-deploy.sh"
 	@echo "$(GREEN)✅ Deployed → https://$(DOMAIN)$(NC)"
 
-vps-first-deploy: ## Full first-time deploy: ship → nginx → TLS cert → build → PM2 start
+vps-first-deploy: ## Full first-time deploy: ship → env → nginx → TLS cert → build → PM2 start
 	@echo "$(YELLOW)🚀 First-time production deployment to $(VPS_HOST)...$(NC)"
-	@echo "$(YELLOW)   Step 1/4: Syncing source code...$(NC)"
+	@echo "$(YELLOW)   Step 1/5: Syncing source code...$(NC)"
 	@$(MAKE) ship
-	@echo "$(YELLOW)   Step 2/4: Installing Nginx (HTTP-only until cert is ready)...$(NC)"
+	@echo "$(YELLOW)   Step 2/5: Uploading production secrets (.env)...$(NC)"
+	@$(MAKE) vps-env
+	@echo "$(YELLOW)   Step 3/5: Installing Nginx (HTTP-only until cert is ready)...$(NC)"
 	@$(MAKE) vps-nginx
-	@echo "$(YELLOW)   Step 3/4: Provisioning TLS certificate via Certbot...$(NC)"
+	@echo "$(YELLOW)   Step 4/5: Provisioning TLS certificate via Certbot...$(NC)"
 	@$(MAKE) vps-ssl
-	@echo "$(YELLOW)   Step 4/4: Building and starting PM2...$(NC)"
+	@echo "$(YELLOW)   Step 5/5: Building and starting PM2...$(NC)"
 	@ssh -t $(VPS_USER)@$(VPS_HOST) "bash $(VPS_DIR)/scripts/vps-deploy.sh"
 	@echo ""
 	@echo "$(GREEN)═══════════════════════════════════════════════════════$(NC)"

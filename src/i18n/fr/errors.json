@@ -1,0 +1,10 @@
+{
+  "validation": {
+    "company_description_required": "La description de l'entreprise est requise.",
+    "brief_required": "Le brief est requis."
+  },
+  "llm": {
+    "unavailable": "Le service de génération est temporairement indisponible. Veuillez réessayer dans quelques instants.",
+    "invalid_response": "Le modèle a retourné une réponse invalide. Veuillez réessayer."
+  }
+}

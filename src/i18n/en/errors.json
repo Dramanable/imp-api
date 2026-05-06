@@ -1,0 +1,10 @@
+{
+  "validation": {
+    "company_description_required": "Company description is required.",
+    "brief_required": "Brief is required."
+  },
+  "llm": {
+    "unavailable": "The generation service is temporarily unavailable. Please try again shortly.",
+    "invalid_response": "The model returned an invalid response. Please try again."
+  }
+}

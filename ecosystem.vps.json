@@ -1,0 +1,34 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  PM2 Ecosystem — LinkedIn Post Generator API
+#  VPS: 84.247.160.53  |  /home/amadou/impalia/api
+#
+#  Usage:
+#    pm2 start ecosystem.vps.json --env production
+#    pm2 reload impalia-api --update-env
+#    pm2 save
+# ─────────────────────────────────────────────────────────────────────────────
+{
+  "apps": [
+    {
+      "name": "impalia-api",
+      "script": "dist/main.js",
+
+      "instances": 2,
+      "exec_mode": "cluster",
+
+      "max_memory_restart": "512M",
+      "restart_delay": 3000,
+      "max_restarts": 10,
+
+      "env_production": {
+        "NODE_ENV": "production",
+        "PORT": 3000
+      },
+
+      "error_file": "/home/amadou/impalia/logs/error.log",
+      "out_file": "/home/amadou/impalia/logs/out.log",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss Z",
+      "merge_logs": true
+    }
+  ]
+}

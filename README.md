@@ -1,98 +1,285 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# LinkedIn Post Generator API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A production-ready REST API that generates LinkedIn posts tailored to French SMEs. Provide a company description, a brief, and a tone — the service handles prompt engineering, LLM orchestration, server-side caching, and streaming.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+**Live:** https://impalia-server.a3s-securite.com/api/v1  
+**Swagger UI:** https://impalia-server.a3s-securite.com/docs
 
-## Description
+---
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Features
 
-## Project setup
+- **Streaming (SSE)** — token-by-token delivery via `POST /linkedin-post/generate/stream`
+- **Non-streaming** — full JSON response via `POST /linkedin-post/generate`
+- **Server-side cache** — Redis-backed, 1-hour TTL, keyed on (description + brief + tone + lang)
+- **Full i18n** — prompts and all error messages localised in French 🇫🇷 and English 🇬🇧
+- **Rate limiting** — 20 req/min per IP (translated 429 response)
+- **Prompt injection protection** — 14 pattern checks + special-character ratio guard
+- **Health endpoint** — `GET /health` reports Redis connectivity and uptime
+- **Strict TypeScript** — `strictNullChecks`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`
+- **52 tests** — 32 unit + 20 E2E (all green)
 
-```bash
-$ pnpm install
+---
+
+## Architecture
+
+```
+Clean Architecture + DDD
+─────────────────────────────────────────────────────
+core/          Pure TypeScript — Domain + Application
+  ├── linkedin-post/
+  │   ├── domain/         Entities, VOs, Exceptions, Service interfaces
+  │   └── application/    Use Cases (GenerateLinkedInPostUseCase)
+  └── shared/             DomainException, ICacheService, ILogger
+
+infrastructure/  NestJS adapters — implements core interfaces
+  └── linkedin-post/
+      ├── services/       OpenAI, Redis cache, Pino logger, Input sanitizer
+      └── linkedin-post.module.ts   DI wiring
+
+presentation/    HTTP layer
+  └── rest/
+      ├── features/       Controllers + DTOs
+      ├── filters/        DomainExceptionFilter (i18n error translation)
+      └── security/       (rate-limit configured in main.ts)
 ```
 
-## Compile and run the project
+**Key rule:** `core/` has zero framework dependencies (no NestJS, no Node.js crypto, no npm packages). Everything external is injected via interfaces.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | NestJS 11 + Fastify 5 |
+| Language | TypeScript 5 (strict mode) |
+| LLM | OpenAI (`gpt-4o-mini`) via official SDK |
+| Cache | Redis 7 via ioredis |
+| i18n | nestjs-i18n (fr/en) |
+| Logging | nestjs-pino (JSON structured) |
+| Validation | class-validator + class-transformer |
+| Rate limiting | @fastify/rate-limit |
+| Security headers | @fastify/helmet |
+| Package manager | pnpm 10 |
+| Tests | Jest (unit) + Supertest (E2E) + nock (HTTP mocks) |
+| Process manager | PM2 (cluster mode, 2 workers) |
+| Reverse proxy | Nginx (SSE-aware, TLS termination) |
+
+---
+
+## Quick Start (local with Docker)
+
+**Prerequisites:** Docker Desktop or Docker Engine + `make`
 
 ```bash
-# development
-$ pnpm run start
+# 1. Clone the repository
+git clone https://github.com/your-org/impalia-linkedin-api.git
+cd impalia-linkedin-api/api
 
-# watch mode
-$ pnpm run start:dev
+# 2. Configure environment
+cp .env.example .env
+# Edit .env and set OPENAI_API_KEY=sk-...
 
-# production mode
-$ pnpm run start:prod
+# 3. Start API + Redis
+make dev-up
+
+# 4. Open Swagger UI
+open http://localhost:3000/docs
 ```
 
-## Run tests
+The API is now available at `http://localhost:3000/api/v1`.
+
+---
+
+## Local Development (without Docker)
 
 ```bash
-# unit tests
-$ pnpm run test
+# Install dependencies
+pnpm install
 
-# e2e tests
-$ pnpm run test:e2e
+# Start Redis (required)
+redis-server &
 
-# test coverage
-$ pnpm run test:cov
+# Start API in watch mode
+pnpm start:dev
+
+# Run all tests
+make test
+make test-e2e
 ```
 
-## Deployment
+---
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## Environment Variables
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Copy `.env.example` to `.env` and fill in your values:
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `OPENAI_API_KEY` | ✅ | — | OpenAI API key |
+| `LLM_PROVIDER` | | `openai` | LLM provider (`openai`) |
+| `OPENAI_MODEL` | | `gpt-4o-mini` | OpenAI model name |
+| `LLM_TEMPERATURE` | | `0.7` | Sampling temperature (0–1) |
+| `LLM_MAX_TOKENS` | | `1024` | Max tokens per response |
+| `PORT` | | `3000` | HTTP server port |
+| `NODE_ENV` | | `development` | `development` or `production` |
+| `CORS_ORIGIN` | | `*` | Comma-separated allowed origins |
+| `LOG_LEVEL` | | `info` | Pino level: `trace`–`fatal` |
+| `CACHE_TTL_MS` | | `3600000` | Cache TTL in milliseconds (1 h) |
+| `REDIS_HOST` | | `127.0.0.1` | Redis hostname |
+| `REDIS_PORT` | | `6379` | Redis port |
+| `REDIS_PASSWORD` | | — | Redis AUTH password (optional) |
+
+---
+
+## API Endpoints
+
+Base path: `/api/v1`
+
+### `POST /linkedin-post/generate`
+
+Generate a LinkedIn post (full JSON response).
+
+**Request**
+```json
+{
+  "companyDescription": "TechFlow est une PME spécialisée dans la transformation numérique.",
+  "brief": "Annonce de recrutement : ingénieur DevOps senior.",
+  "tone": "professional"
+}
+```
+
+**Response `200`**
+```json
+{
+  "post": "🚀 Nous recrutons un ingénieur DevOps...",
+  "intentionNote": "L'accroche emoji crée un signal visuel fort...",
+  "fromCache": false
+}
+```
+
+**Error responses**
+
+| Status | Condition |
+|---|---|
+| `400` | Empty input or prompt injection detected |
+| `429` | Rate limit exceeded (20 req/min per IP) |
+| `503` | LLM service unavailable |
+
+---
+
+### `POST /linkedin-post/generate/stream`
+
+Same inputs as above — streams the response as Server-Sent Events:
+
+```
+data: {"type":"chunk","content":"🚀 Nous recrutons"}
+data: {"type":"chunk","content":" un ingénieur"}
+data: {"type":"note","content":"L'accroche emoji..."}
+data: {"type":"done","fromCache":false}
+```
+
+On error:
+```
+data: {"type":"error","code":"linkedin-post.llm.unavailable","message":"Le service est temporairement indisponible...","statusCode":503}
+```
+
+---
+
+### `GET /health`
+
+```json
+{
+  "status": "ok",
+  "redis": "up",
+  "uptime": 3600.5,
+  "timestamp": "2026-05-06T10:00:00.000Z"
+}
+```
+
+`status` is `"degraded"` when Redis is unreachable (the API continues serving requests).
+
+---
+
+## Deployment to VPS
+
+### First-time setup (run once)
 
 ```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
+# 1. Provision the VPS (Node 24, pnpm, Redis, Nginx, PM2, Certbot)
+make vps-setup
+
+# 2. Create .env on the VPS with production values
+ssh amadou@84.247.160.53 "cat > /home/amadou/impalia/api/.env"
+# Paste your production .env, then Ctrl+D
+
+# 3. Install Nginx config
+make vps-nginx
+
+# 4. Obtain SSL certificate
+make vps-ssl
+
+# 5. First deployment
+make vps-deploy
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### Regular deployments
 
-## Resources
+```bash
+# Sync code + build + PM2 reload (zero-downtime)
+make vps-deploy
 
-Check out a few resources that may come in handy when working with NestJS:
+# Or: build + reload without re-syncing (faster)
+make vps-redeploy
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+### Monitoring
 
-## Support
+```bash
+make vps-status    # PM2 + Redis + Nginx status
+make vps-health    # Hit /api/v1/health on the live server
+make vps-tail      # Follow PM2 logs in real time
+make vps-logs      # Last 50 log lines
+```
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+---
 
-## Stay in touch
+## Running Tests
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+```bash
+# Unit tests (32)
+pnpm test --no-coverage
+
+# E2E tests (20) — no real Redis or OpenAI needed (all mocked)
+pnpm test:e2e --no-coverage
+
+# All tests with Docker
+make dev-test
+```
+
+---
+
+## Known Limits
+
+- **Single LLM provider** — only OpenAI is wired; Anthropic and Mistral are stub-ready via `createLlmProvider()` factory but not implemented.
+- **In-memory rate-limit state** — not shared across PM2 workers; each worker has its own counter. A Redis-backed store would be needed for exact per-IP accounting at scale.
+- **No authentication** — the API is public. A JWT guard or API-key middleware would be required before production exposure.
+- **Cache invalidation** — no manual invalidation endpoint; cache expires after `CACHE_TTL_MS` (default 1 h).
+
+---
+
+## Roadmap (6-month industrialisation)
+
+1. **Multi-LLM** — implement Anthropic Claude and Mistral providers
+2. **Auth** — API key or OAuth 2.0 per tenant
+3. **Distributed rate limiting** — Redis-backed `@fastify/rate-limit` store
+4. **Frontend** — React + Vite UI (streaming display, copy button, tone selector)
+5. **CI/CD** — GitHub Actions: lint → test → Docker build → VPS deploy on merge to `main`
+6. **Observability** — OpenTelemetry traces + Grafana dashboard
+
+---
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Private — Impalia technical assessment. Not for public distribution.

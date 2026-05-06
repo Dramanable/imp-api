@@ -1,0 +1,45 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  docker-compose.yml — Local development environment
+#  Services: api (NestJS hot-reload) + redis
+#
+#  Usage:
+#    docker compose up -d          # start in background
+#    docker compose logs -f api    # follow API logs
+#    docker compose down           # stop all services
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── API (NestJS + Fastify, hot-reload) ──────────────────────────────────────
+  api:
+    build:
+      context: .
+      target: builder          # Use the builder stage (has devDeps + ts-node)
+    working_dir: /app
+    command: pnpm start:dev    # nest start --watch
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      REDIS_HOST: redis        # Resolve via Docker DNS
+      REDIS_PORT: 6379
+    volumes:
+      - ./src:/app/src:ro      # Mount source for hot-reload (read-only)
+      - ./test:/app/test:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Redis 7 (cache) ──────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped

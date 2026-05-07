@@ -72,7 +72,16 @@ async function bootstrap() {
     'onRequest',
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (request: any, _reply: any, done: () => void) => {
-      if (request.url?.startsWith('/api/docs')) {
+      // @fastify/compress 8.x + Fastify v5 + Node 24 incompatibility:
+      // force identity encoding on routes that must not be compressed.
+      // - Swagger UI: produces Content-Length: 0 when gzip is negotiated.
+      // - SSE stream: compression would buffer the entire event stream,
+      //   preventing real-time delivery to the client (especially visible
+      //   through frontend dev proxies such as Vite).
+      if (
+        request.url?.startsWith('/api/docs') ||
+        request.url?.endsWith('/generate/stream')
+      ) {
         request.headers['accept-encoding'] = 'identity';
       }
       done();

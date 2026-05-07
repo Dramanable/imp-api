@@ -119,6 +119,7 @@ For a streaming experience (token-by-token), use \`POST /linkedin-post/generate/
   // ── Streaming endpoint (SSE) ───────────────────────────────────────────────
 
   @Post('generate/stream')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Stream a LinkedIn post generation (Server-Sent Events)',
     description: `Streams the LinkedIn post token by token using **Server-Sent Events (SSE)**.

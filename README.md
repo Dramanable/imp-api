@@ -1,50 +1,73 @@
 # LinkedIn Post Generator API
 
-A production-ready REST API that generates LinkedIn posts tailored to French SMEs. Provide a company description, a brief, and a tone — the service handles prompt engineering, LLM orchestration, server-side caching, and streaming.
+> Production-ready REST API that generates LinkedIn posts for French SMEs.  
+> Provide a company description, a brief, and a tone of voice — the service handles prompt engineering, LLM orchestration, Redis caching, and real-time streaming.
 
 **Live:** https://impalia-server.a3s-securite.com/api/v1  
-**Swagger UI:** https://impalia-server.a3s-securite.com/docs
+**Swagger UI:** https://impalia-server.a3s-securite.com/api/docs
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Quick Start (Docker)](#quick-start-docker)
+- [Local Development](#local-development)
+- [Environment Variables](#environment-variables)
+- [API Reference](#api-reference)
+- [Frontend Integration (SSE)](#frontend-integration-sse)
+- [Running Tests](#running-tests)
+- [Deployment to VPS](#deployment-to-vps)
+- [Known Limits](#known-limits)
+- [Roadmap](#roadmap)
 
 ---
 
 ## Features
 
-- **Streaming (SSE)** — token-by-token delivery via `POST /linkedin-post/generate/stream`
-- **Non-streaming** — full JSON response via `POST /linkedin-post/generate`
-- **Server-side cache** — Redis-backed, 1-hour TTL, keyed on (description + brief + tone + lang)
-- **Full i18n** — prompts and all error messages localised in French 🇫🇷 and English 🇬🇧
-- **Rate limiting** — 20 req/min per IP (translated 429 response)
-- **Prompt injection protection** — 14 pattern checks + special-character ratio guard
-- **Health endpoint** — `GET /health` reports Redis connectivity and uptime
-- **Strict TypeScript** — `strictNullChecks`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`
-- **52 tests** — 32 unit + 20 E2E (all green)
+| Feature | Details |
+|---|---|
+| **Streaming (SSE)** | Token-by-token delivery via `POST /linkedin-post/generate/stream` — returns `HTTP 200` |
+| **Non-streaming** | Full JSON response via `POST /linkedin-post/generate` |
+| **Redis cache** | 1-hour TTL, keyed on `(description + brief + tone + lang)` |
+| **i18n** | Prompts and all error messages in French 🇫🇷 and English 🇬🇧 via `Accept-Language` |
+| **Rate limiting** | 20 req/min per IP in production (translated 429 response) |
+| **Prompt injection guard** | 14 pattern checks + special-character ratio heuristic |
+| **Health endpoint** | `GET /health` reports Redis connectivity and process uptime |
+| **Strict TypeScript** | `strictNullChecks`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes` |
+| **Test coverage** | 32 unit + 20 E2E tests (all green, fully mocked — no real LLM or Redis needed) |
 
 ---
 
 ## Architecture
 
+Clean Architecture + DDD — `core/` has **zero framework dependencies**.
+
 ```
-Clean Architecture + DDD
-─────────────────────────────────────────────────────
-core/          Pure TypeScript — Domain + Application
-  ├── linkedin-post/
-  │   ├── domain/         Entities, VOs, Exceptions, Service interfaces
-  │   └── application/    Use Cases (GenerateLinkedInPostUseCase)
-  └── shared/             DomainException, ICacheService, ILogger
-
-infrastructure/  NestJS adapters — implements core interfaces
-  └── linkedin-post/
-      ├── services/       OpenAI, Redis cache, Pino logger, Input sanitizer
-      └── linkedin-post.module.ts   DI wiring
-
-presentation/    HTTP layer
-  └── rest/
-      ├── features/       Controllers + DTOs
-      ├── filters/        DomainExceptionFilter (i18n error translation)
-      └── security/       (rate-limit configured in main.ts)
+src/
+├── core/                    # Pure TypeScript — Domain + Application
+│   ├── linkedin-post/
+│   │   ├── domain/          # Entities, Value Objects, Exceptions, Service interfaces
+│   │   └── application/     # Use Cases (GenerateLinkedInPostUseCase)
+│   └── shared/              # DomainException, ICacheService, ILogger
+│
+├── infrastructure/          # NestJS adapters — implements core interfaces
+│   └── linkedin-post/
+│       ├── services/        # OpenAI, Redis cache, Pino logger, Input sanitizer
+│       └── linkedin-post.module.ts   # DI wiring
+│
+├── presentation/            # HTTP layer
+│   └── rest/
+│       ├── features/        # Controllers + DTOs (with full Swagger docs)
+│       └── filters/         # DomainExceptionFilter (i18n error translation)
+│
+├── i18n/                    # Localisation catalogues (fr / en)
+└── test/e2e/                # End-to-end tests (Supertest, fully mocked)
 ```
 
-**Key rule:** `core/` has zero framework dependencies (no NestJS, no Node.js crypto, no npm packages). Everything external is injected via interfaces.
+**Dependency rule:** `core/` never imports from `infrastructure/` or `presentation/`. All I/O is injected via interfaces (ports).
 
 ---
 
@@ -56,92 +79,95 @@ presentation/    HTTP layer
 | Language | TypeScript 5 (strict mode) |
 | LLM | OpenAI (`gpt-4o-mini`) via official SDK |
 | Cache | Redis 7 via ioredis |
-| i18n | nestjs-i18n (fr/en) |
+| i18n | nestjs-i18n (fr / en) |
 | Logging | nestjs-pino (JSON structured) |
 | Validation | class-validator + class-transformer |
+| Compression | @fastify/compress (gzip/deflate, disabled on SSE routes) |
 | Rate limiting | @fastify/rate-limit |
-| Security headers | @fastify/helmet |
+| Security headers | @fastify/helmet (OWASP) |
 | Package manager | pnpm 10 |
-| Tests | Jest (unit) + Supertest (E2E) + nock (HTTP mocks) |
+| Tests | Jest (unit) + Supertest (E2E) |
 | Process manager | PM2 (cluster mode, 2 workers) |
-| Reverse proxy | Nginx (SSE-aware, TLS termination) |
+| Reverse proxy | Nginx (SSE-aware, TLS termination via Certbot) |
 
 ---
 
-## Quick Start (local with Docker)
+## Quick Start (Docker)
 
-**Prerequisites:** Docker Desktop or Docker Engine + `make`
+**Prerequisites:** Docker Engine ≥ 24.
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/your-org/impalia-linkedin-api.git
-cd impalia-linkedin-api/api
+# 1. Clone
+git clone https://github.com/Dramanable/imp-api.git
+cd imp-api
 
 # 2. Configure environment
 cp .env.example .env
-# Edit .env and set OPENAI_API_KEY=sk-...
+# Open .env and set:  OPENAI_API_KEY=sk-...
 
 # 3. Start API + Redis
-make dev-up
+docker compose up -d
 
 # 4. Open Swagger UI
-open http://localhost:3000/docs
+open http://localhost:3000/api/docs
 ```
 
-The API is now available at `http://localhost:3000/api/v1`.
+The API is available at `http://localhost:3000/api/v1`.
 
 ---
 
-## Local Development (without Docker)
+## Local Development
 
 ```bash
 # Install dependencies
 pnpm install
 
 # Start Redis (required)
-redis-server &
+redis-server --daemonize yes
 
-# Start API in watch mode
+# Start API in watch mode (hot-reload)
 pnpm start:dev
 
-# Run all tests
-make test
-make test-e2e
+# Lint
+pnpm lint
 ```
+
+> **Docker is preferred** — it ensures Redis is available and `.env` is loaded automatically.
 
 ---
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` and fill in your values:
+Copy `.env.example` to `.env` and fill in your values.
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `OPENAI_API_KEY` | ✅ | — | OpenAI API key |
-| `LLM_PROVIDER` | | `openai` | LLM provider (`openai`) |
+| `OPENAI_API_KEY` | ✅ | — | OpenAI API key (`sk-...`) |
+| `LLM_PROVIDER` | | `openai` | LLM backend — only `openai` supported |
 | `OPENAI_MODEL` | | `gpt-4o-mini` | OpenAI model name |
-| `LLM_TEMPERATURE` | | `0.7` | Sampling temperature (0–1) |
-| `LLM_MAX_TOKENS` | | `1024` | Max tokens per response |
+| `LLM_TEMPERATURE` | | `0.7` | Sampling temperature (0.0 – 1.0) |
+| `LLM_MAX_TOKENS` | | `1024` | Max tokens per completion |
 | `PORT` | | `3000` | HTTP server port |
 | `NODE_ENV` | | `development` | `development` or `production` |
 | `CORS_ORIGIN` | | `*` | Comma-separated allowed origins |
-| `LOG_LEVEL` | | `info` | Pino level: `trace`–`fatal` |
-| `CACHE_TTL_MS` | | `3600000` | Cache TTL in milliseconds (1 h) |
+| `LOG_LEVEL` | | `info` | Pino level: `trace` \| `debug` \| `info` \| `warn` \| `error` |
+| `CACHE_TTL_MS` | | `3600000` | Cache TTL in milliseconds (default: 1 h) |
 | `REDIS_HOST` | | `127.0.0.1` | Redis hostname |
 | `REDIS_PORT` | | `6379` | Redis port |
-| `REDIS_PASSWORD` | | — | Redis AUTH password (optional) |
+| `REDIS_PASSWORD` | | — | Redis `AUTH` password (optional) |
+
+> **Never commit `.env`** — it is excluded by `.gitignore`. See `.env.example` for the template.
 
 ---
 
-## API Endpoints
+## API Reference
 
-Base path: `/api/v1`
+Base URL: `/api/v1`
 
-### `POST /linkedin-post/generate`
+### `POST /linkedin-post/generate` — JSON response
 
-Generate a LinkedIn post (full JSON response).
+**Request body**
 
-**Request**
 ```json
 {
   "companyDescription": "TechFlow est une PME spécialisée dans la transformation numérique.",
@@ -150,11 +176,18 @@ Generate a LinkedIn post (full JSON response).
 }
 ```
 
+| Field | Type | Constraints |
+|---|---|---|
+| `companyDescription` | `string` | 1 – 2 000 chars, required |
+| `brief` | `string` | 1 – 500 chars, required |
+| `tone` | `string` | 1 – 100 chars — predefined (`professional` \| `casual` \| `inspiring` \| `expert`) or any custom string |
+
 **Response `200`**
+
 ```json
 {
-  "post": "🚀 Nous recrutons un ingénieur DevOps...",
-  "intentionNote": "L'accroche emoji crée un signal visuel fort...",
+  "post": "🚀 TechFlow recrute un ingénieur DevOps senior...",
+  "intentionNote": "L'accroche emoji crée un signal visuel fort dans le fil d'actualité.",
   "fromCache": false
 }
 ```
@@ -163,27 +196,36 @@ Generate a LinkedIn post (full JSON response).
 
 | Status | Condition |
 |---|---|
-| `400` | Empty input or prompt injection detected |
-| `429` | Rate limit exceeded (20 req/min per IP) |
-| `503` | LLM service unavailable |
+| `400` | Missing/empty field, length exceeded, or prompt injection detected |
+| `429` | Rate limit exceeded (20 req/min per IP) — includes `retryAfter` in seconds |
+| `503` | OpenAI service unavailable |
 
 ---
 
-### `POST /linkedin-post/generate/stream`
+### `POST /linkedin-post/generate/stream` — Server-Sent Events
 
-Same inputs as above — streams the response as Server-Sent Events:
+Same request body as above. Returns `HTTP 200` with `Content-Type: text/event-stream`.
+
+**Event sequence**
 
 ```
-data: {"type":"chunk","content":"🚀 Nous recrutons"}
-data: {"type":"chunk","content":" un ingénieur"}
-data: {"type":"note","content":"L'accroche emoji..."}
+data: {"type":"chunk","content":"🚀 TechFlow recrute"}
+
+data: {"type":"chunk","content":" un ingénieur DevOps"}
+
+data: {"type":"note","content":"L'accroche emoji crée un signal visuel fort..."}
+
 data: {"type":"done","fromCache":false}
 ```
 
-On error:
-```
-data: {"type":"error","code":"linkedin-post.llm.unavailable","message":"Le service est temporairement indisponible...","statusCode":503}
-```
+| Event type | When | Payload |
+|---|---|---|
+| `chunk` | During generation, per LLM token | `{ type, content: string }` |
+| `note` | After the post is complete | `{ type, content: string }` — full editorial intention note |
+| `done` | End of stream | `{ type, fromCache: boolean }` |
+| `error` | On domain or LLM error | `{ type, code, message, statusCode }` |
+
+> **Cache behaviour:** identical requests are served from Redis. The post is still streamed as chunks; `done.fromCache` will be `true`.
 
 ---
 
@@ -194,11 +236,73 @@ data: {"type":"error","code":"linkedin-post.llm.unavailable","message":"Le servi
   "status": "ok",
   "redis": "up",
   "uptime": 3600.5,
-  "timestamp": "2026-05-06T10:00:00.000Z"
+  "timestamp": "2026-05-07T10:00:00.000Z"
 }
 ```
 
-`status` is `"degraded"` when Redis is unreachable (the API continues serving requests).
+`status` is `"degraded"` when Redis is unreachable — the API continues serving requests.
+
+---
+
+## Frontend Integration (SSE)
+
+The stream endpoint always returns **HTTP 200**. Use a `fetch`-based reader (not `EventSource`, which does not support `POST`):
+
+```js
+const response = await fetch('/api/v1/linkedin-post/generate/stream', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept-Language': 'fr',
+  },
+  body: JSON.stringify({ companyDescription, brief, tone }),
+});
+
+if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+let buffer = '';
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+
+  buffer += decoder.decode(value, { stream: true });
+  const lines = buffer.split('\n');
+  buffer = lines.pop() ?? '';   // keep incomplete line for next iteration
+
+  for (const line of lines) {
+    if (!line.startsWith('data: ')) continue;
+    const event = JSON.parse(line.slice(6));
+
+    if (event.type === 'chunk') appendToPost(event.content);
+    if (event.type === 'note')  setEditorialNote(event.content);
+    if (event.type === 'done')  setFromCache(event.fromCache);
+    if (event.type === 'error') handleError(event);
+  }
+}
+```
+
+> **Vite dev proxy note:** if your frontend runs behind a Vite dev proxy, set `changeOrigin: true` in the proxy config. The API already disables `@fastify/compress` on the stream route to guarantee real-time event delivery.
+
+---
+
+## Running Tests
+
+```bash
+# Unit tests (32)
+pnpm test --no-coverage
+
+# E2E tests (20) — fully mocked, no real Redis or OpenAI needed
+pnpm test:e2e --no-coverage
+
+# Watch mode
+pnpm test:watch
+
+# Coverage report
+pnpm test:cov
+```
 
 ---
 
@@ -210,14 +314,14 @@ data: {"type":"error","code":"linkedin-post.llm.unavailable","message":"Le servi
 # 1. Provision the VPS (Node 24, pnpm, Redis, Nginx, PM2, Certbot)
 make vps-setup
 
-# 2. Create .env on the VPS with production values
-ssh amadou@84.247.160.53 "cat > /home/amadou/impalia/api/.env"
-# Paste your production .env, then Ctrl+D
+# 2. Create the production .env on the VPS
+ssh <user>@<vps-ip> "cat > ~/impalia/api/.env"
+# Paste your production .env content, then Ctrl+D
 
-# 3. Install Nginx config
+# 3. Install Nginx configuration
 make vps-nginx
 
-# 4. Obtain SSL certificate
+# 4. Obtain TLS certificate (Let's Encrypt)
 make vps-ssl
 
 # 5. First deployment
@@ -227,54 +331,39 @@ make vps-deploy
 ### Regular deployments
 
 ```bash
-# Sync code + build + PM2 reload (zero-downtime)
+# Sync code + build + PM2 zero-downtime reload
 make vps-deploy
 
-# Or: build + reload without re-syncing (faster)
+# Build + reload only (skip rsync, faster when only source changed)
 make vps-redeploy
 ```
 
 ### Monitoring
 
 ```bash
-make vps-status    # PM2 + Redis + Nginx status
-make vps-health    # Hit /api/v1/health on the live server
+make vps-status    # PM2 + Redis + Nginx status overview
+make vps-health    # Curl GET /health on the live server
 make vps-tail      # Follow PM2 logs in real time
-make vps-logs      # Last 50 log lines
-```
-
----
-
-## Running Tests
-
-```bash
-# Unit tests (32)
-pnpm test --no-coverage
-
-# E2E tests (20) — no real Redis or OpenAI needed (all mocked)
-pnpm test:e2e --no-coverage
-
-# All tests with Docker
-make dev-test
+make vps-logs      # Print last 50 log lines
 ```
 
 ---
 
 ## Known Limits
 
-- **Single LLM provider** — only OpenAI is wired; Anthropic and Mistral are stub-ready via `createLlmProvider()` factory but not implemented.
-- **In-memory rate-limit state** — not shared across PM2 workers; each worker has its own counter. A Redis-backed store would be needed for exact per-IP accounting at scale.
-- **No authentication** — the API is public. A JWT guard or API-key middleware would be required before production exposure.
-- **Cache invalidation** — no manual invalidation endpoint; cache expires after `CACHE_TTL_MS` (default 1 h).
+- **Single LLM provider** — only OpenAI is implemented. Anthropic and Mistral can be added via the `createLlmProvider()` factory without touching any other layer.
+- **In-memory rate-limit state** — not shared across PM2 workers. A Redis-backed store is needed for exact per-IP accounting in a multi-worker setup.
+- **No authentication** — the API is public. Add an API-key guard or OAuth 2.0 before exposing it broadly.
+- **No cache invalidation endpoint** — entries expire automatically after `CACHE_TTL_MS` (default 1 h).
 
 ---
 
-## Roadmap (6-month industrialisation)
+## Roadmap
 
-1. **Multi-LLM** — implement Anthropic Claude and Mistral providers
-2. **Auth** — API key or OAuth 2.0 per tenant
+1. **Multi-LLM** — Anthropic Claude and Mistral adapters
+2. **Authentication** — API key or OAuth 2.0 per client
 3. **Distributed rate limiting** — Redis-backed `@fastify/rate-limit` store
-4. **Frontend** — React + Vite UI (streaming display, copy button, tone selector)
+4. **Frontend** — React + Vite UI (live streaming display, copy button, tone selector)
 5. **CI/CD** — GitHub Actions: lint → test → Docker build → VPS deploy on merge to `main`
 6. **Observability** — OpenTelemetry traces + Grafana dashboard
 
